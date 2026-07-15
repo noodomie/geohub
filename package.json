@@ -1,0 +1,14 @@
+{
+  "name": "geomultiplayer-sandbox",
+  "version": "1.0.0",
+  "description": "Sade 3D Çok Oyunculu Sandbox Oyunu",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.6.1",
+    "three": "^0.147.0"
+  }
+}

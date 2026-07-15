@@ -1,0 +1,360 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    -moz-user-select: none !important;
+    -ms-user-select: none !important;
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0) !important;
+    -webkit-tap-highlight-color: transparent !important;
+    -webkit-touch-callout: none !important;
+}
+
+body, html {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #111;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+#game-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+}
+
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10;
+    transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.login-box {
+    background: #141414;
+    border: 2px solid #282828;
+    border-radius: 20px;
+    padding: 30px 25px;
+    width: 90%;
+    max-width: 360px;
+    text-align: center;
+    box-shadow: 0 15px 35px rgba(0,0,0,0.7);
+}
+
+.login-box h1 {
+    color: #fff;
+    margin-bottom: 20px;
+    font-size: 2.6rem;
+    letter-spacing: 3px;
+    font-weight: 800;
+}
+
+.input-group {
+    margin-bottom: 15px;
+}
+
+#username-input {
+    width: 100%;
+    padding: 12px 20px;
+    border: 2px solid #282828;
+    background: #0a0a0a;
+    color: #fff;
+    border-radius: 25px;
+    font-size: 1rem;
+    outline: none;
+    text-align: center;
+    user-select: text !important;
+    -webkit-user-select: text !important;
+}
+
+#username-input:focus {
+    border-color: #555;
+}
+
+.color-picker-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 10px 0 20px 0;
+}
+
+.color-label {
+    color: #888;
+    font-size: 0.85rem;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+#color-wheel {
+    border-radius: 50%;
+    border: 3px solid #333;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+    cursor: pointer;
+    touch-action: none;
+}
+
+#play-button {
+    width: 100%;
+    padding: 13px;
+    background: #000;
+    color: #fff;
+    border: 2px solid #333;
+    border-radius: 25px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s ease;
+}
+
+#play-button:active {
+    background: #151515;
+    border-color: #666;
+    transform: scale(0.98);
+}
+
+.error-msg {
+    color: #ff4a4a;
+    font-size: 0.85rem;
+    margin-top: 8px;
+    display: none;
+}
+
+.error-msg.show {
+    display: block;
+}
+
+.hidden {
+    display: none !important;
+}
+
+#game-ui {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 5;
+    pointer-events: none;
+}
+
+#game-ui * {
+    pointer-events: auto;
+}
+
+/* Sağ Üst Ortak Menü Barı */
+#ui-bar {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    gap: 12px;
+    z-index: 8;
+}
+
+.ui-bar-btn {
+    width: 50px;
+    height: 50px;
+    background: #000;
+    border: 2px solid #333;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    color: #fff;
+    transition: transform 0.2s, background-color 0.2s, border-color 0.2s;
+}
+
+.ui-bar-btn:active {
+    background: #1a1a1a;
+    border-color: #555;
+    transform: scale(0.9);
+}
+
+/* Sağdan Sola Açılan Sohbet Paneli */
+.side-panel {
+    position: absolute;
+    top: 85px;
+    right: 20px;
+    width: 320px;
+    height: 320px;
+    background: rgba(10, 10, 10, 0.96);
+    border: 2px solid #2a2a2a;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+    z-index: 7;
+    transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.3s ease;
+    transform: translateX(0);
+    opacity: 1;
+}
+
+.side-panel.closed {
+    transform: translateX(350px) !important;
+    opacity: 0;
+    pointer-events: none !important;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    border-bottom: 1.5px solid #222;
+}
+
+.panel-header h3 {
+    color: #fff;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.panel-close {
+    background: transparent;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    font-size: 1.3rem;
+    padding: 5px;
+}
+
+#chat-messages {
+    flex: 1;
+    padding: 10px;
+    overflow-y: auto;
+    color: #eee;
+    font-size: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.msg {
+    background: rgba(255,255,255,0.03);
+    padding: 6px 10px;
+    border-radius: 6px;
+    border-left: 3px solid rgba(255,255,255,0.1);
+    word-break: break-all;
+}
+
+.msg-sender {
+    margin-right: 5px;
+    font-weight: bold;
+}
+
+.panel-input-area {
+    display: flex;
+    padding: 8px;
+    gap: 8px;
+    border-top: 1.5px solid #222;
+}
+
+#chat-input {
+    flex: 1;
+    background: #151515;
+    border: 1px solid #333;
+    color: #fff;
+    border-radius: 18px;
+    padding: 8px 14px;
+    font-size: 0.85rem;
+    outline: none;
+    user-select: text !important;
+    -webkit-user-select: text !important;
+}
+
+#chat-input:focus {
+    border-color: #555;
+}
+
+#chat-send {
+    background: #000;
+    border: 1.5px solid #333;
+    color: #fff;
+    border-radius: 18px;
+    padding: 8px 16px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.2s ease;
+}
+
+#chat-send:active {
+    background: #222;
+}
+
+/* Joystick & Zıplama Butonu */
+#joystick-container {
+    position: absolute;
+    bottom: 25px;
+    left: 35px;
+    width: 110px;
+    height: 110px;
+}
+
+#joystick-base {
+    width: 100%;
+    height: 100%;
+    background: rgba(10, 10, 10, 0.75);
+    border: 3px solid #2a2a2a;
+    border-radius: 50%;
+    position: relative;
+    touch-action: none;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+}
+
+#joystick-thumb {
+    width: 45px;
+    height: 45px;
+    background: #fff;
+    border: 3px solid #1a1a1a;
+    border-radius: 50%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 5px 12px rgba(0,0,0,0.6);
+}
+
+#jump-button {
+    position: absolute;
+    bottom: 25px;
+    right: 35px;
+    width: 75px;
+    height: 75px;
+    background: #000;
+    color: #fff;
+    border: 3px solid #333;
+    border-radius: 50%;
+    font-size: 0.95rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 6px 15px rgba(0,0,0,0.5);
+    touch-action: none;
+    transition: background-color 0.1s, border-color 0.1s, transform 0.1s;
+}
+
+#jump-button:active {
+    background: #222;
+    border-color: #555;
+    transform: scale(0.92);
+}
