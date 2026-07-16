@@ -26,32 +26,30 @@ if (usernameInput && errorMessage) {
     usernameInput.parentNode.insertBefore(errorMessage, usernameInput.nextSibling);
 }
 
-// === 1. HATA ÇÖZÜMÜ: ANDROID AUTOFILL BARINI KAPATMA ===
-// Tarayıcı şifre yöneticilerini şaşırtmak için rastgele isimler ve kesin engeller tanımlıyoruz
 if (usernameInput) {
-    usernameInput.setAttribute('autocomplete', 'off');
+    usernameInput.setAttribute('type', 'search');
+    usernameInput.setAttribute('autocomplete', 'one-time-code');
     usernameInput.setAttribute('autocorrect', 'off');
     usernameInput.setAttribute('autocapitalize', 'off');
     usernameInput.setAttribute('spellcheck', 'false');
-    // Şifre yöneticileri bu ismi tarayamasın diye rastgele bir 'name' atıyoruz
-    usernameInput.name = 'user_field_' + Math.random().toString(36).substring(7);
+    usernameInput.name = 'search_user_' + Math.random().toString(36).substring(7);
 }
 if (chatInput) {
-    chatInput.setAttribute('autocomplete', 'off');
+    chatInput.setAttribute('type', 'search');
+    chatInput.setAttribute('autocomplete', 'one-time-code');
     chatInput.setAttribute('autocorrect', 'off');
     chatInput.setAttribute('autocapitalize', 'off');
     chatInput.setAttribute('spellcheck', 'false');
-    chatInput.name = 'chat_field_' + Math.random().toString(36).substring(7);
+    chatInput.name = 'search_chat_' + Math.random().toString(36).substring(7);
 }
 
-// === ORTAK BUTON TASARIM FONKSİYONU ===
 function styleGameButton(btn) {
     if (!btn) return;
     btn.style.position = 'fixed';
     btn.style.top = '16px';
     btn.style.width = '46px';
     btn.style.height = '46px';
-    btn.style.borderRadius = '50%'; // Kusursuz daire
+    btn.style.borderRadius = '50%';
     btn.style.border = 'none';
     btn.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
     btn.style.color = '#ffffff';
@@ -275,15 +273,13 @@ if (colorWheel) {
     });
 }
 
-// === 2. HATA ÇÖZÜMÜ: SPAM ENGELLEME DEĞİŞKENLERİ VE FONKSİYONU ===
 let isJoining = false;
 
 playButton.addEventListener('click', joinGame);
 usernameInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') joinGame(); });
 
 function joinGame() {
-    // Eğer zaten katılma işlemi devam ediyorsa yeni istekleri engelle
-    if (isJoining) return;
+    if (isJoining || localPlayerId) return;
 
     const name = usernameInput.value.trim();
     errorMessage.classList.remove('show');
@@ -298,7 +294,6 @@ function joinGame() {
         return;
     }
 
-    // Katılım kilidini aktif et ve butonu görsel olarak pasifleştir
     isJoining = true;
     if (playButton) {
         playButton.disabled = true;
@@ -326,7 +321,6 @@ socket.on('joinResponse', (response) => {
             }
         }, 500);
     } else {
-        // Hata alınırsa (örneğin isim alınmışsa vb.) kilidi aç ki tekrar deneyebilsin
         isJoining = false;
         if (playButton) {
             playButton.disabled = false;
@@ -347,7 +341,9 @@ function setupMultiplayer(initialPlayers) {
 }
 
 socket.on('playerJoined', (playerData) => {
-    createOtherPlayer(playerData);
+    if (playerData.id !== localPlayerId) {
+        createOtherPlayer(playerData);
+    }
 });
 
 socket.on('playerMoved', (playerData) => {
@@ -449,6 +445,13 @@ function createPlayerGroup(color, username = null) {
 }
 
 function createOtherPlayer(playerData) {
+    if (playerData.id === localPlayerId) return;
+    
+    if (otherPlayers[playerData.id]) {
+        scene.remove(otherPlayers[playerData.id].mesh);
+        delete otherPlayers[playerData.id];
+    }
+    
     const color = playerData.color || '#80d8ff';
     const mesh = createPlayerGroup(color, playerData.username);
     mesh.position.set(playerData.x, playerData.y, playerData.z);
