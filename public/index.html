@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GeoMultiplayer Sandbox</title>
+    <title>GeoHub - Multiplayer</title>
     <link rel="stylesheet" href="style.css">
     
     <script src="/three.min.js"></script>
@@ -13,7 +13,7 @@
 
     <div id="login-screen" class="overlay">
         <div class="login-box">
-            <h1>GEOPLAY</h1>
+            <h1>GEOHUB</h1>
             <div class="input-group">
                 <input type="text" id="username-input" placeholder="Kullanıcı Adı" minlength="3" maxlength="16" autocomplete="off">
             </div>
@@ -21,7 +21,7 @@
                 <span class="color-label">Karakter Rengi</span>
                 <canvas id="color-wheel" width="150" height="150"></canvas>
             </div>
-            <button id="play-button">Oyuna Katıl</button>
+            <button id="play-button">Katıl</button>
             <div id="error-message" class="error-msg"></div>
         </div>
     </div>
@@ -37,12 +37,12 @@
 
         <div id="chat-panel" class="side-panel closed">
             <div class="panel-header">
-                <h3>Sohbet Odası</h3>
+                <h3>Sohbet</h3>
                 <button id="chat-close" class="panel-close">&times;</button>
             </div>
             <div id="chat-messages"></div>
             <div class="panel-input-area">
-                <input type="text" id="chat-input" placeholder="Mesaj yazın..." autocomplete="off">
+                <input type="text" id="chat-input" placeholder="Mesaj" autocomplete="off">
                 <button id="chat-send">Gönder</button>
             </div>
         </div>
