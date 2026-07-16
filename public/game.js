@@ -24,27 +24,65 @@ const chatMessages = document.getElementById('chat-messages');
 if (usernameInput && errorMessage) {
     usernameInput.parentNode.insertBefore(errorMessage, usernameInput.nextSibling);
 }
+
+// === ORTAK BUTON TASARIM FONKSİYONU ===
+// Sol ve sağ butonların tıpatıp simetrik görünmesi için ortak stil tanımlaması
+function styleGameButton(btn) {
+    if (!btn) return;
+    btn.style.position = 'fixed';
+    btn.style.top = '16px';
+    btn.style.width = '46px';
+    btn.style.height = '46px';
+    btn.style.borderRadius = '50%'; // Kusursuz daire
+    btn.style.border = 'none';
+    btn.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    btn.style.color = '#ffffff';
+    btn.style.display = 'flex';
+    btn.style.alignItems = 'center';
+    btn.style.justifyContent = 'center';
+    btn.style.cursor = 'pointer';
+    btn.style.backdropFilter = 'blur(10px)';
+    btn.style.webkitBackdropFilter = 'blur(10px)';
+    btn.style.transition = 'background-color 0.2s, transform 0.1s';
+    btn.style.outline = 'none';
+    btn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+    btn.style.zIndex = '9999';
+    btn.style.padding = '0';
+    
+    // Dokunma (basma) animasyonu
+    btn.addEventListener('touchstart', () => { btn.style.transform = 'scale(0.9)'; });
+    btn.addEventListener('touchend', () => { btn.style.transform = 'scale(1)'; });
+}
+
 let unreadCount = 0;
 let chatBadge = document.getElementById('chat-badge');
-if (btnChat && !chatBadge) {
-    chatBadge = document.createElement('span');
-    chatBadge.id = 'chat-badge';
-    chatBadge.style.position = 'absolute';
-    chatBadge.style.top = '-5px';
-    chatBadge.style.right = '-5px';
-    chatBadge.style.backgroundColor = '#ff3838';
-    chatBadge.style.color = '#ffffff';
-    chatBadge.style.borderRadius = '50%';
-    chatBadge.style.padding = '2px 6px';
-    chatBadge.style.fontSize = '12px';
-    chatBadge.style.fontWeight = 'bold';
-    chatBadge.style.display = 'none';
-    chatBadge.style.minWidth = '14px';
-    chatBadge.style.textAlign = 'center';
-    chatBadge.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
-    btnChat.style.position = 'relative';
-    btnChat.appendChild(chatBadge);
+
+// Sohbet Butonunu Yeniden Tasarla
+if (btnChat) {
+    styleGameButton(btnChat);
+    btnChat.style.right = '16px'; // Sağ tarafa yasla
+    
+    if (!chatBadge) {
+        chatBadge = document.createElement('span');
+        chatBadge.id = 'chat-badge';
+        chatBadge.style.position = 'absolute';
+        chatBadge.style.top = '-2px';
+        chatBadge.style.right = '-2px';
+        chatBadge.style.backgroundColor = '#ff3838';
+        chatBadge.style.color = '#ffffff';
+        chatBadge.style.borderRadius = '50%';
+        chatBadge.style.padding = '2px 6px';
+        chatBadge.style.fontSize = '12px';
+        chatBadge.style.fontWeight = 'bold';
+        chatBadge.style.display = 'none';
+        chatBadge.style.minWidth = '14px';
+        chatBadge.style.textAlign = 'center';
+        chatBadge.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
+        chatBadge.style.zIndex = '10000';
+        btnChat.appendChild(chatBadge);
+    }
 }
+
 function updateChatBadge() {
     if (!chatBadge) return;
     if (unreadCount > 0) {
@@ -67,33 +105,17 @@ inputs.forEach(input => {
         input.addEventListener('blur', resetScroll);
     }
 });
+
+// Tam Ekran Butonunu Yeniden Tasarla
 const fsBtn = document.createElement('button');
 fsBtn.id = 'fullscreen-btn';
 const fsIcon = '<svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>';
 const exitFsIcon = '<svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6m10-6h-6v6M4 10h6V4m10 6h-6V4"></path></svg>';
 fsBtn.innerHTML = fsIcon;
-fsBtn.style.position = 'fixed';
-fsBtn.style.top = '15px';
-fsBtn.style.left = '15px';
-fsBtn.style.zIndex = '9999';
-fsBtn.style.width = '44px';
-fsBtn.style.height = '44px';
-fsBtn.style.borderRadius = '12px';
-fsBtn.style.border = 'none';
-fsBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-fsBtn.style.color = '#ffffff';
-fsBtn.style.display = 'flex';
-fsBtn.style.alignItems = 'center';
-fsBtn.style.justifyContent = 'center';
-fsBtn.style.cursor = 'pointer';
-fsBtn.style.backdropFilter = 'blur(10px)';
-fsBtn.style.webkitBackdropFilter = 'blur(10px)';
-fsBtn.style.transition = 'background-color 0.2s, transform 0.1s';
-fsBtn.style.outline = 'none';
-fsBtn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
-fsBtn.addEventListener('touchstart', () => { fsBtn.style.transform = 'scale(0.9)'; });
-fsBtn.addEventListener('touchend', () => { fsBtn.style.transform = 'scale(1)'; });
+styleGameButton(fsBtn);
+fsBtn.style.left = '16px'; // Sol tarafa yasla
 document.body.appendChild(fsBtn);
+
 function toggleFullscreen() {
     if (!document.fullscreenElement && !document.mozFullScreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement ) {
         if (document.documentElement.requestFullscreen) {
