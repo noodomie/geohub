@@ -5,6 +5,73 @@ window.onerror = function(message, source, lineno, colno, error) {
 if (typeof THREE === 'undefined') {
     alert("Kritik Hata: Three.js kütüphanesi yüklenemedi!");
 }
+
+// -------------------------------------------------------------
+// INSTAGRAM & MOBİL CİHAZLAR İÇİN DİNAMİK CSS VE VIEWPORT DÜZELTMELERİ
+// -------------------------------------------------------------
+const customStyle = document.createElement('style');
+customStyle.innerHTML = `
+    /* Tüm mobil tarayıcılarda klavye açılınca ekranın taşmasını engelle */
+    html, body {
+        height: calc(var(--vh, 1vh) * 100) !important;
+        overflow: hidden !important;
+        position: fixed !important;
+        width: 100% !important;
+        margin: 0;
+        padding: 0;
+    }
+    #game-canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100% !important;
+        height: calc(var(--vh, 1vh) * 100) !important;
+        z-index: 1;
+    }
+    #game-ui {
+        height: calc(var(--vh, 1vh) * 100) !important;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        pointer-events: none;
+        z-index: 10;
+        box-sizing: border-box;
+    }
+    /* Sohbet paneli Instagram klavyesi açıldığında taşmasın diye daraltıldı */
+    #chat-panel {
+        max-height: calc(var(--vh, 1vh) * 45) !important; 
+        height: auto !important;
+        bottom: 85px !important;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        pointer-events: auto;
+    }
+    #chat-messages {
+        flex: 1;
+        max-height: calc(var(--vh, 1vh) * 28) !important;
+        overflow-y: auto !important;
+    }
+    /* iOS ve Instagram'da inputa tıklayınca ekranın yakınlaşmasını (auto-zoom) engellemek için font boyutu en az 16px olmalı */
+    #chat-input, #username-input {
+        font-size: 16px !important;
+    }
+`;
+document.head.appendChild(customStyle);
+
+// Dinamik yükseklik hesaplama fonksiyonu
+function resetHeight() {
+    const vh = window.innerHeight * 0.01;
+    document.documentElement.style.setProperty('--vh', `${vh}px`);
+}
+window.addEventListener('resize', resetHeight);
+window.addEventListener('orientationchange', resetHeight);
+resetHeight();
+
+// -------------------------------------------------------------
+// OYUN MOTORU VE BAĞLANTILAR
+// -------------------------------------------------------------
 const socket = io();
 const loginScreen = document.getElementById('login-screen');
 const gameUI = document.getElementById('game-ui');
@@ -22,7 +89,7 @@ const chatInput = document.getElementById('chat-input');
 const chatSend = document.getElementById('chat-send');
 const chatMessages = document.getElementById('chat-messages');
 
-// 2D Yerel Sesler (Sadece kendi duyacağımız sesler ve arayüz klikleri)
+// Yerel 2D Sesler
 const sounds = {
     click: new Audio('/assets/click.mp3'),
     walk: new Audio('/assets/walk.mp3'),
@@ -34,13 +101,13 @@ sounds.walk.volume = 0.35;
 sounds.click.volume = 0.5;
 sounds.jump.volume = 0.55;
 
-// Diğer oyuncuların 3D sesleri için yüklenecek audio buffer'ları
+// Diğer oyuncuların 3D sesleri için değişkenler
 let listener;
 const audioLoader = new THREE.AudioLoader();
 let jumpBuffer = null;
 let walkBuffer = null;
 
-// Sesleri arka planda yükle ve hazır olunca diğer oyunculara bağla
+// Sesleri arka planda yükle
 audioLoader.load('/assets/jump.mp3', (buffer) => {
     jumpBuffer = buffer;
     Object.keys(otherPlayers).forEach(id => {
@@ -66,11 +133,17 @@ function playSound(soundName) {
     }
 }
 
-// Tarayıcının ses engellemesini (Autoplay Block) aşmak için tetikleyici
-function unlockAudio() {
+// Tarayıcı Ses Engellemesini Aşmak ve Ses Motorunu Aktif Etmek
+const resumeAudioContext = () => {
     if (THREE.AudioContext.getContext().state === 'suspended') {
         THREE.AudioContext.getContext().resume();
     }
+};
+window.addEventListener('click', resumeAudioContext);
+window.addEventListener('touchstart', resumeAudioContext);
+
+function unlockAudio() {
+    resumeAudioContext();
     Object.keys(sounds).forEach(key => {
         sounds[key].play().then(() => {
             if (key !== 'walk') {
@@ -81,35 +154,44 @@ function unlockAudio() {
     });
 }
 
-// Global Buton Klik Yakalayıcı (Her butona basıldığında click sesi çalar)
+// Global Buton Klik Yakalayıcı
 document.addEventListener('click', (e) => {
     const btn = e.target.closest('button') || e.target.closest('.game-btn');
     if (btn) {
-        // Zıplama butonu kendi jump sesini çıkaracağı için onu klik sesinden muaf tutuyoruz
-        if (btn.id === 'jump-button') return;
+        if (btn.id === 'jump-button') return; // Zıplama kendi özel sesini çalar
         playSound('click');
     }
 });
 
-if (usernameInput && errorMessage) {
-    usernameInput.parentNode.insertBefore(errorMessage, usernameInput.nextSibling);
-}
-
+// -------------------------------------------------------------
+// KULLANICI ADI GİRİŞ KISITLAMALARI (SADECE KÜÇÜK HARFLER)
+// -------------------------------------------------------------
 if (usernameInput) {
+    // Kullanıcı adı alanına yazarken anında filtreleme yapar
+    usernameInput.addEventListener('input', (e) => {
+        // Türkçe küçük harfler dahil (ç,ğ,ı,ö,ş,ü) sadece küçük harflere izin verilir.
+        // Büyük harf girilirse otomatik küçültülür, geçersiz sembol/boşluk girilirse anında silinir.
+        let val = e.target.value.toLowerCase();
+        e.target.value = val.replace(/[^a-zçğıöşü]/g, '');
+    });
+
     usernameInput.setAttribute('type', 'search');
-    usernameInput.setAttribute('autocomplete', 'one-time-code');
+    usernameInput.setAttribute('autocomplete', 'off');
     usernameInput.setAttribute('autocorrect', 'off');
     usernameInput.setAttribute('autocapitalize', 'off');
     usernameInput.setAttribute('spellcheck', 'false');
-    usernameInput.name = 'search_user_' + Math.random().toString(36).substring(7);
 }
+
 if (chatInput) {
     chatInput.setAttribute('type', 'search');
-    chatInput.setAttribute('autocomplete', 'one-time-code');
+    chatInput.setAttribute('autocomplete', 'off');
     chatInput.setAttribute('autocorrect', 'off');
     chatInput.setAttribute('autocapitalize', 'off');
     chatInput.setAttribute('spellcheck', 'false');
-    chatInput.name = 'search_chat_' + Math.random().toString(36).substring(7);
+}
+
+if (usernameInput && errorMessage) {
+    usernameInput.parentNode.insertBefore(errorMessage, usernameInput.nextSibling);
 }
 
 function styleGameButton(btn) {
@@ -260,7 +342,7 @@ let joyDX = 0, joyDY = 0;
 const PLATFORM_RADIUS = 24.5;
 let pickerPos = { x: 75, y: 75 };
 
-let localJumpedThisFrame = false; // Ağ üzerinden zıplama bilgisini senkronize etmek için
+let localJumpedThisFrame = false; 
 
 function rgbToHex(r, g, b) {
     return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
@@ -354,15 +436,10 @@ usernameInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') joinG
 function joinGame() {
     if (isJoining || localPlayerId) return;
 
-    const name = usernameInput.value.trim();
+    const name = usernameInput.value.trim().toLowerCase(); // Garanti olması açısından harfleri tamamen küçült
     errorMessage.classList.remove('show');
     if (name.length < 3 || name.length > 16) {
         errorMessage.innerText = "Kullanıcı adı en az 3, en fazla 16 karakter olmalıdır!";
-        errorMessage.classList.add('show');
-        return;
-    }
-    if (/\s/.test(name)) {
-        errorMessage.innerText = "Kullanıcı adında boşluk bulunamaz!";
         errorMessage.classList.add('show');
         return;
     }
@@ -375,7 +452,6 @@ function joinGame() {
     }
 
     unlockAudio();
-
     socket.emit('joinRequest', { username: name, color: playerColor });
 }
 
@@ -421,11 +497,15 @@ socket.on('playerJoined', (playerData) => {
     }
 });
 
+// -------------------------------------------------------------
+// DIGER OYUNCU HAREKETLERI (SMOOTH LERP VE 3D SES TETIKLENMESI)
+// -------------------------------------------------------------
 socket.on('playerMoved', (playerData) => {
     const other = otherPlayers[playerData.id];
     if (other) {
-        other.mesh.position.set(playerData.x, playerData.y, playerData.z);
-        other.mesh.rotation.y = playerData.ry;
+        // Doğrudan pozisyonu eşitlemek yerine yumuşak geçiş için hedef koordinatları kaydediyoruz
+        other.targetPosition.set(playerData.x, playerData.y, playerData.z);
+        other.targetRotationY = playerData.ry;
 
         // 3D Konumsal Yürüme Sesi Kontrolü
         if (playerData.walking) {
@@ -434,7 +514,7 @@ socket.on('playerMoved', (playerData) => {
             }
         } else {
             if (other.walkSound && other.walkSound.isPlaying) {
-                other.walkSound.pause();
+                other.walkSound.stop();
             }
         }
 
@@ -452,7 +532,6 @@ socket.on('playerMoved', (playerData) => {
 
 socket.on('playerLeft', (id) => {
     if (otherPlayers[id]) {
-        // Çıkış yaparken çalan yürüyüş sesini kapat ki arkada ghost loop kalmasın
         if (otherPlayers[id].walkSound && otherPlayers[id].walkSound.isPlaying) {
             otherPlayers[id].walkSound.stop();
         }
@@ -562,8 +641,8 @@ function createOtherPlayer(playerData) {
     // Diğer oyuncu için 3D Positional Audio (Zıplama) oluştur
     const jumpSound = new THREE.PositionalAudio(listener);
     jumpSound.setDistanceModel('linear');
-    jumpSound.setRefDistance(2);    // 2 birime kadar tam ses seviyesi
-    jumpSound.setMaxDistance(20);   // 20 birimden sonra ses tamamen kesilir
+    jumpSound.setRefDistance(2);    
+    jumpSound.setMaxDistance(20);   
     jumpSound.setRolloffFactor(1);
     if (jumpBuffer) {
         jumpSound.setBuffer(jumpBuffer);
@@ -583,12 +662,15 @@ function createOtherPlayer(playerData) {
     }
     mesh.add(walkSound);
     
+    // Smooth hareket için hedef noktaları burada başlatıyoruz
     otherPlayers[playerData.id] = { 
         mesh, 
         username: playerData.username, 
         color: color,
         jumpSound,
-        walkSound
+        walkSound,
+        targetPosition: new THREE.Vector3(playerData.x, playerData.y, playerData.z),
+        targetRotationY: playerData.ry
     };
 }
 
@@ -598,7 +680,7 @@ function initEngine() {
     scene.background = new THREE.Color(0xdbeeff);
     camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
     
-    // Konumsal ses dinleyicisini kameraya bağlıyoruz
+    // Kameraya kulaklığı bağla (3D Ses İçin Kritik)
     listener = new THREE.AudioListener();
     camera.add(listener);
 
@@ -706,7 +788,7 @@ function setupControls() {
             velocityY = JUMP_FORCE;
             isGrounded = false;
             playSound('jump');
-            localJumpedThisFrame = true; // Sunucu paketine zıpladığımızı ekliyoruz
+            localJumpedThisFrame = true; 
         }
     });
 }
@@ -744,7 +826,6 @@ function tick() {
 }
 
 function updatePhysics() {
-    let wasGrounded = isGrounded;
     velocityY += GRAVITY;
     position.y += velocityY;
     
@@ -797,17 +878,30 @@ function updatePhysics() {
     camera.position.set(targetCamX, targetCamY, targetCamZ);
     camera.lookAt(position.x, position.y + 1.0, position.z);
     
+    // -------------------------------------------------------------
+    // DIGER OYUNCULARI LERP ILE PÜRÜZSÜZ HALE GETİRME (PING GIDERICI)
+    // -------------------------------------------------------------
+    Object.keys(otherPlayers).forEach(id => {
+        const other = otherPlayers[id];
+        if (other && other.mesh) {
+            // Saniyede 60 karede hedef konuma %15 yaklaşmasını sağlayarak akıcı kayma sağlıyoruz
+            other.mesh.position.lerp(other.targetPosition, 0.15);
+            
+            // Dönüş açısını da pürüzsüz yapıyoruz
+            other.mesh.rotation.y = THREE.MathUtils.lerp(other.mesh.rotation.y, other.targetRotationY, 0.15);
+        }
+    });
+
     if (socket.connected && localPlayerId && localPlayerMesh) {
         socket.emit('move', {
             x: position.x,
             y: position.y,
             z: position.z,
             ry: localPlayerMesh.rotation.y,
-            walking: isMoving && isGrounded, // Yürüme durumumuz
-            jumping: localJumpedThisFrame      // Zıplama durumumuz (Sadece zıplandığı kare true olur)
+            walking: isMoving && isGrounded, 
+            jumping: localJumpedThisFrame      
         });
         
-        // Zıplama sinyalini gönderdikten sonra hemen sıfırlıyoruz ki her kare zıplıyormuş gibi algılanmasın
         localJumpedThisFrame = false; 
     }
 }
