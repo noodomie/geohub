@@ -1,7 +1,7 @@
 {
-  "name": "geomultiplayer-sandbox",
+  "name": "geohubmultiplayer",
   "version": "1.0.0",
-  "description": "Sade 3D Çok Oyunculu Sandbox Oyunu",
+  "description": "GeoHub - Multiplayer",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
