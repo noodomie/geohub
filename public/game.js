@@ -67,6 +67,68 @@ inputs.forEach(input => {
         input.addEventListener('blur', resetScroll);
     }
 });
+const fsBtn = document.createElement('button');
+fsBtn.id = 'fullscreen-btn';
+const fsIcon = '<svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>';
+const exitFsIcon = '<svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6m10-6h-6v6M4 10h6V4m10 6h-6V4"></path></svg>';
+fsBtn.innerHTML = fsIcon;
+fsBtn.style.position = 'fixed';
+fsBtn.style.top = '15px';
+fsBtn.style.left = '15px';
+fsBtn.style.zIndex = '9999';
+fsBtn.style.width = '44px';
+fsBtn.style.height = '44px';
+fsBtn.style.borderRadius = '12px';
+fsBtn.style.border = 'none';
+fsBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+fsBtn.style.color = '#ffffff';
+fsBtn.style.display = 'flex';
+fsBtn.style.alignItems = 'center';
+fsBtn.style.justifyContent = 'center';
+fsBtn.style.cursor = 'pointer';
+fsBtn.style.backdropFilter = 'blur(10px)';
+fsBtn.style.webkitBackdropFilter = 'blur(10px)';
+fsBtn.style.transition = 'background-color 0.2s, transform 0.1s';
+fsBtn.style.outline = 'none';
+fsBtn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+fsBtn.addEventListener('touchstart', () => { fsBtn.style.transform = 'scale(0.9)'; });
+fsBtn.addEventListener('touchend', () => { fsBtn.style.transform = 'scale(1)'; });
+document.body.appendChild(fsBtn);
+function toggleFullscreen() {
+    if (!document.fullscreenElement && !document.mozFullScreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement ) {
+        if (document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen();
+        } else if (document.documentElement.msRequestFullscreen) {
+            document.documentElement.msRequestFullscreen();
+        } else if (document.documentElement.mozRequestFullScreen) {
+            document.documentElement.mozRequestFullScreen();
+        } else if (document.documentElement.webkitRequestFullscreen) {
+            document.documentElement.webkitRequestFullscreen(Element.ALLOW_KEYBOARD_INPUT);
+        }
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        } else if (document.msExitFullscreen) {
+            document.msExitFullscreen();
+        } else if (document.mozCancelFullScreen) {
+            document.mozCancelFullScreen();
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        }
+    }
+}
+fsBtn.addEventListener('click', toggleFullscreen);
+function updateFsIcon() {
+    if (document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement) {
+        fsBtn.innerHTML = exitFsIcon;
+    } else {
+        fsBtn.innerHTML = fsIcon;
+    }
+}
+document.addEventListener('fullscreenchange', updateFsIcon);
+document.addEventListener('webkitfullscreenchange', updateFsIcon);
+document.addEventListener('mozfullscreenchange', updateFsIcon);
+document.addEventListener('MSFullscreenChange', updateFsIcon);
 let localPlayerId = null;
 let playerColor = '#00a8ff';
 let scene, camera, renderer;
@@ -361,7 +423,7 @@ function initEngine() {
 }
 function setupControls() {
     window.addEventListener('touchstart', (e) => {
-        if (e.target.closest('.side-panel') || e.target.closest('#ui-bar') || e.target.closest('#login-screen')) {
+        if (e.target.closest('.side-panel') || e.target.closest('#ui-bar') || e.target.closest('#login-screen') || e.target.closest('#fullscreen-btn')) {
             return;
         }
         for (let i = 0; i < e.changedTouches.length; i++) {
