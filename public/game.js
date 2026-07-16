@@ -21,12 +21,30 @@ const chatClose = document.getElementById('chat-close');
 const chatInput = document.getElementById('chat-input');
 const chatSend = document.getElementById('chat-send');
 const chatMessages = document.getElementById('chat-messages');
+
 if (usernameInput && errorMessage) {
     usernameInput.parentNode.insertBefore(errorMessage, usernameInput.nextSibling);
 }
 
+// === 1. HATA ÇÖZÜMÜ: ANDROID AUTOFILL BARINI KAPATMA ===
+// Tarayıcı şifre yöneticilerini şaşırtmak için rastgele isimler ve kesin engeller tanımlıyoruz
+if (usernameInput) {
+    usernameInput.setAttribute('autocomplete', 'off');
+    usernameInput.setAttribute('autocorrect', 'off');
+    usernameInput.setAttribute('autocapitalize', 'off');
+    usernameInput.setAttribute('spellcheck', 'false');
+    // Şifre yöneticileri bu ismi tarayamasın diye rastgele bir 'name' atıyoruz
+    usernameInput.name = 'user_field_' + Math.random().toString(36).substring(7);
+}
+if (chatInput) {
+    chatInput.setAttribute('autocomplete', 'off');
+    chatInput.setAttribute('autocorrect', 'off');
+    chatInput.setAttribute('autocapitalize', 'off');
+    chatInput.setAttribute('spellcheck', 'false');
+    chatInput.name = 'chat_field_' + Math.random().toString(36).substring(7);
+}
+
 // === ORTAK BUTON TASARIM FONKSİYONU ===
-// Sol ve sağ butonların tıpatıp simetrik görünmesi için ortak stil tanımlaması
 function styleGameButton(btn) {
     if (!btn) return;
     btn.style.position = 'fixed';
@@ -49,7 +67,6 @@ function styleGameButton(btn) {
     btn.style.zIndex = '9999';
     btn.style.padding = '0';
     
-    // Dokunma (basma) animasyonu
     btn.addEventListener('touchstart', () => { btn.style.transform = 'scale(0.9)'; });
     btn.addEventListener('touchend', () => { btn.style.transform = 'scale(1)'; });
 }
@@ -57,10 +74,9 @@ function styleGameButton(btn) {
 let unreadCount = 0;
 let chatBadge = document.getElementById('chat-badge');
 
-// Sohbet Butonunu Yeniden Tasarla
 if (btnChat) {
     styleGameButton(btnChat);
-    btnChat.style.right = '16px'; // Sağ tarafa yasla
+    btnChat.style.right = '16px'; 
     
     if (!chatBadge) {
         chatBadge = document.createElement('span');
@@ -92,6 +108,7 @@ function updateChatBadge() {
         chatBadge.style.display = 'none';
     }
 }
+
 const inputs = [usernameInput, chatInput];
 inputs.forEach(input => {
     if (input) {
@@ -106,14 +123,13 @@ inputs.forEach(input => {
     }
 });
 
-// Tam Ekran Butonunu Yeniden Tasarla
 const fsBtn = document.createElement('button');
 fsBtn.id = 'fullscreen-btn';
 const fsIcon = '<svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>';
 const exitFsIcon = '<svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6m10-6h-6v6M4 10h6V4m10 6h-6V4"></path></svg>';
 fsBtn.innerHTML = fsIcon;
 styleGameButton(fsBtn);
-fsBtn.style.left = '16px'; // Sol tarafa yasla
+fsBtn.style.left = '16px'; 
 document.body.appendChild(fsBtn);
 
 function toggleFullscreen() {
@@ -140,6 +156,7 @@ function toggleFullscreen() {
     }
 }
 fsBtn.addEventListener('click', toggleFullscreen);
+
 function updateFsIcon() {
     if (document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement) {
         fsBtn.innerHTML = exitFsIcon;
@@ -151,6 +168,7 @@ document.addEventListener('fullscreenchange', updateFsIcon);
 document.addEventListener('webkitfullscreenchange', updateFsIcon);
 document.addEventListener('mozfullscreenchange', updateFsIcon);
 document.addEventListener('MSFullscreenChange', updateFsIcon);
+
 let localPlayerId = null;
 let playerColor = '#00a8ff';
 let scene, camera, renderer;
@@ -172,9 +190,11 @@ let joystickActive = false;
 let joyDX = 0, joyDY = 0;
 const PLATFORM_RADIUS = 24.5;
 let pickerPos = { x: 75, y: 75 };
+
 function rgbToHex(r, g, b) {
     return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 }
+
 function drawWheel(selectX = null, selectY = null) {
     if (!colorWheel) return;
     const ctx = colorWheel.getContext('2d');
@@ -207,6 +227,7 @@ function drawWheel(selectX = null, selectY = null) {
     ctx.lineWidth = 1.5;
     ctx.stroke();
 }
+
 function handleColorPick(e) {
     const rect = colorWheel.getBoundingClientRect();
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -223,12 +244,14 @@ function handleColorPick(e) {
         drawWheel(x, y);
     }
 }
+
 const initialAngle = 200 * Math.PI / 180;
 pickerPos = {
     x: 75 + 55 * Math.cos(initialAngle),
     y: 75 + 55 * Math.sin(initialAngle)
 };
 drawWheel();
+
 if (colorWheel) {
     colorWheel.addEventListener('mousedown', (e) => {
         handleColorPick(e);
@@ -251,9 +274,17 @@ if (colorWheel) {
         window.addEventListener('touchend', onTouchEnd);
     });
 }
+
+// === 2. HATA ÇÖZÜMÜ: SPAM ENGELLEME DEĞİŞKENLERİ VE FONKSİYONU ===
+let isJoining = false;
+
 playButton.addEventListener('click', joinGame);
 usernameInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') joinGame(); });
+
 function joinGame() {
+    // Eğer zaten katılma işlemi devam ediyorsa yeni istekleri engelle
+    if (isJoining) return;
+
     const name = usernameInput.value.trim();
     errorMessage.classList.remove('show');
     if (name.length < 3 || name.length > 16) {
@@ -266,8 +297,18 @@ function joinGame() {
         errorMessage.classList.add('show');
         return;
     }
+
+    // Katılım kilidini aktif et ve butonu görsel olarak pasifleştir
+    isJoining = true;
+    if (playButton) {
+        playButton.disabled = true;
+        playButton.style.opacity = '0.6';
+        playButton.innerText = "Bağlanıyor...";
+    }
+
     socket.emit('joinRequest', { username: name, color: playerColor });
 }
+
 socket.on('joinResponse', (response) => {
     if (response.success) {
         localPlayerId = response.id;
@@ -285,10 +326,18 @@ socket.on('joinResponse', (response) => {
             }
         }, 500);
     } else {
+        // Hata alınırsa (örneğin isim alınmışsa vb.) kilidi aç ki tekrar deneyebilsin
+        isJoining = false;
+        if (playButton) {
+            playButton.disabled = false;
+            playButton.style.opacity = '1';
+            playButton.innerText = "Katıl";
+        }
         errorMessage.innerText = response.error;
         errorMessage.classList.add('show');
     }
 });
+
 function setupMultiplayer(initialPlayers) {
     Object.keys(initialPlayers).forEach((id) => {
         if (id !== localPlayerId) {
@@ -296,21 +345,25 @@ function setupMultiplayer(initialPlayers) {
         }
     });
 }
+
 socket.on('playerJoined', (playerData) => {
     createOtherPlayer(playerData);
 });
+
 socket.on('playerMoved', (playerData) => {
     if (otherPlayers[playerData.id]) {
         otherPlayers[playerData.id].mesh.position.set(playerData.x, playerData.y, playerData.z);
         otherPlayers[playerData.id].mesh.rotation.y = playerData.ry;
     }
 });
+
 socket.on('playerLeft', (id) => {
     if (otherPlayers[id]) {
         scene.remove(otherPlayers[id].mesh);
         delete otherPlayers[id];
     }
 });
+
 btnChat.addEventListener('click', () => {
     chatPanel.classList.toggle('closed');
     if (!chatPanel.classList.contains('closed')) {
@@ -318,11 +371,14 @@ btnChat.addEventListener('click', () => {
         updateChatBadge();
     }
 });
+
 chatClose.addEventListener('click', () => {
     chatPanel.classList.add('closed');
 });
+
 chatSend.addEventListener('click', sendChatMessage);
 chatInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendChatMessage(); });
+
 function sendChatMessage() {
     const text = chatInput.value.trim();
     if (text) {
@@ -330,6 +386,7 @@ function sendChatMessage() {
         chatInput.value = '';
     }
 }
+
 socket.on('chatMessage', (data) => {
     const msgElement = document.createElement('div');
     msgElement.className = 'msg';
@@ -341,6 +398,7 @@ socket.on('chatMessage', (data) => {
         updateChatBadge();
     }
 });
+
 function createBeanGeometry() {
     try {
         return new THREE.CapsuleGeometry(0.4, 0.8, 8, 16);
@@ -348,6 +406,7 @@ function createBeanGeometry() {
         return new THREE.CylinderGeometry(0.4, 0.4, 0.8, 16);
     }
 }
+
 function createPlayerGroup(color, username = null) {
     const group = new THREE.Group();
     const bodyGeo = createBeanGeometry();
@@ -388,6 +447,7 @@ function createPlayerGroup(color, username = null) {
     }
     return group;
 }
+
 function createOtherPlayer(playerData) {
     const color = playerData.color || '#80d8ff';
     const mesh = createPlayerGroup(color, playerData.username);
@@ -395,6 +455,7 @@ function createOtherPlayer(playerData) {
     scene.add(mesh);
     otherPlayers[playerData.id] = { mesh, username: playerData.username, color: color };
 }
+
 function initEngine() {
     position = new THREE.Vector3(0, 1, 0);
     scene = new THREE.Scene();
@@ -443,6 +504,7 @@ function initEngine() {
     setupControls();
     tick();
 }
+
 function setupControls() {
     window.addEventListener('touchstart', (e) => {
         if (e.target.closest('.side-panel') || e.target.closest('#ui-bar') || e.target.closest('#login-screen') || e.target.closest('#fullscreen-btn')) {
@@ -505,6 +567,7 @@ function setupControls() {
         }
     });
 }
+
 function updateJoystick(touch) {
     const rect = joystickBase.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
@@ -521,6 +584,7 @@ function updateJoystick(touch) {
     joyDX = dx / maxRadius;
     joyDY = dy / maxRadius;
 }
+
 let lastFrameTime = performance.now();
 const fpsInterval = 1000 / 60;
 function tick() {
@@ -535,6 +599,7 @@ function tick() {
         }
     }
 }
+
 function updatePhysics() {
     velocityY += GRAVITY;
     position.y += velocityY;
@@ -582,6 +647,7 @@ function updatePhysics() {
         });
     }
 }
+
 window.addEventListener('resize', () => {
     if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
         return;
@@ -592,4 +658,3 @@ window.addEventListener('resize', () => {
         renderer.setSize(window.innerWidth, window.innerHeight);
     }
 });
-
