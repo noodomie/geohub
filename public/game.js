@@ -1,428 +1,918 @@
-let socket;
-let scene, camera, renderer;
-let myId = null;
-let localPlayer = null;
-const otherPlayers = {};
-const tapIndicators = [];
+window.onerror = function(message, source, lineno, colno, error) {
+    alert("Kritik Kod Hatası:\n" + message + "\nSatır: " + lineno);
+    return false;
+};
+if (typeof THREE === 'undefined') {
+    alert("Kritik Hata: Three.js kütüphanesi yüklenemedi!");
+}
 
-// Kontroller
-let moveDirection = { x: 0, z: 0 };
-let isJumping = false;
-let jumpVelocity = 0;
-const gravity = 0.015;
+// -------------------------------------------------------------
+// INSTAGRAM & MOBİL CİHAZLAR İÇİN DİNAMİK CSS VE VIEWPORT DÜZELTMELERİ
+// -------------------------------------------------------------
+const customStyle = document.createElement('style');
+customStyle.innerHTML = `
+    /* Tüm mobil tarayıcılarda klavye açılınca ekranın taşmasını engelle */
+    html, body {
+        height: calc(var(--vh, 1vh) * 100) !important;
+        overflow: hidden !important;
+        position: fixed !important;
+        width: 100% !important;
+        margin: 0;
+        padding: 0;
+    }
+    #game-canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100% !important;
+        height: calc(var(--vh, 1vh) * 100) !important;
+        z-index: 1;
+    }
+    #game-ui {
+        height: calc(var(--vh, 1vh) * 100) !important;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        pointer-events: none;
+        z-index: 10;
+        box-sizing: border-box;
+    }
+    /* Sohbet paneli Instagram klavyesi açıldığında taşmasın diye daraltıldı */
+    #chat-panel {
+        max-height: calc(var(--vh, 1vh) * 45) !important; 
+        height: auto !important;
+        bottom: 85px !important;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        pointer-events: auto;
+    }
+    #chat-messages {
+        flex: 1;
+        max-height: calc(var(--vh, 1vh) * 28) !important;
+        overflow-y: auto !important;
+    }
+    /* iOS ve Instagram'da inputa tıklayınca ekranın yakınlaşmasını (auto-zoom) engellemek için font boyutu en az 16px olmalı */
+    #chat-input, #username-input {
+        font-size: 16px !important;
+    }
+`;
+document.head.appendChild(customStyle);
 
-// Giriş elementleri
-const loginContainer = document.getElementById('login-container');
-const gameContainer = document.getElementById('game-container');
+// Dinamik yükseklik hesaplama fonksiyonu
+function resetHeight() {
+    const vh = window.innerHeight * 0.01;
+    document.documentElement.style.setProperty('--vh', `${vh}px`);
+}
+window.addEventListener('resize', resetHeight);
+window.addEventListener('orientationchange', resetHeight);
+resetHeight();
+
+// -------------------------------------------------------------
+// OYUN MOTORU VE BAĞLANTILAR
+// -------------------------------------------------------------
+const socket = io();
+const loginScreen = document.getElementById('login-screen');
+const gameUI = document.getElementById('game-ui');
 const usernameInput = document.getElementById('username-input');
-const joinBtn = document.getElementById('join-btn');
-const loginError = document.getElementById('login-error');
+const colorWheel = document.getElementById('color-wheel');
+const playButton = document.getElementById('play-button');
+const errorMessage = document.getElementById('error-message');
+const joystickBase = document.getElementById('joystick-base');
+const joystickThumb = document.getElementById('joystick-thumb');
+const jumpButton = document.getElementById('jump-button');
+const btnChat = document.getElementById('btn-chat');
+const chatPanel = document.getElementById('chat-panel');
+const chatClose = document.getElementById('chat-close');
+const chatInput = document.getElementById('chat-input');
+const chatSend = document.getElementById('chat-send');
+const chatMessages = document.getElementById('chat-messages');
 
-// Bağlan ve Giriş Yap Yapısı
-joinBtn.addEventListener('click', () => {
-  const rawName = usernameInput.value.trim();
-  const nameRegex = /^[a-zçğıöşuü]+$/; // Sadece küçük Türkçe ve İngilizce harfler
+// Yerel 2D Sesler
+const sounds = {
+    click: new Audio('/assets/click.mp3'),
+    walk: new Audio('/assets/walk.mp3'),
+    jump: new Audio('/assets/jump.mp3')
+};
 
-  if (!nameRegex.test(rawName)) {
-    loginError.innerText = "HATA: Kullanıcı adı sadece küçük harflerden oluşmalıdır! Sayı, boşluk veya noktalama yasak.";
-    return;
-  }
+sounds.walk.loop = true;
+sounds.walk.volume = 0.35;
+sounds.click.volume = 0.5;
+sounds.jump.volume = 0.55;
 
-  loginError.innerText = "";
-  initSocket(rawName);
-});
+// Diğer oyuncuların 3D sesleri için değişkenler
+let listener;
+const audioLoader = new THREE.AudioLoader();
+let jumpBuffer = null;
+let walkBuffer = null;
 
-// Socket.io Bağlantısı
-function initSocket(username) {
-  socket = io();
-
-  socket.on('connect', () => {
-    socket.emit('joinGame', username);
-  });
-
-  socket.on('loginError', (msg) => {
-    loginError.innerText = `HATA: ${msg}`;
-    socket.disconnect();
-  });
-
-  socket.on('loginSuccess', (data) => {
-    myId = data.myId;
-    
-    // Arayüzleri ayarla
-    loginContainer.style.display = 'none';
-    gameContainer.style.display = 'block';
-
-    // Three.js Başlat
-    initThree();
-
-    // Mevcut oyuncuları sahneye ekle
-    for (let id in data.players) {
-      if (id === myId) {
-        createLocalPlayer(data.players[id]);
-      } else {
-        createRemotePlayer(data.players[id]);
-      }
-    }
-
-    // Oyun döngüsünü başlat
-    animate();
-  });
-
-  socket.on('playerJoined', (playerData) => {
-    createRemotePlayer(playerData);
-  });
-
-  socket.on('playerMoved', (data) => {
-    if (otherPlayers[data.id]) {
-      otherPlayers[data.id].mesh.position.set(data.x, data.y, data.z);
-    }
-  });
-
-  // Hasar Alma Olayı (PvP)
-  socket.on('playerHit', (data) => {
-    let target;
-    if (data.targetId === myId) {
-      target = localPlayer;
-      // Kendi HUD Can göstergemizi güncelle
-      document.getElementById('hud-hp-fill').style.width = `${data.hp}%`;
-      document.getElementById('hud-hp-text').innerText = data.hp;
-    } else {
-      target = otherPlayers[data.targetId];
-      // Diğer oyuncunun tepesindeki can barını küçült
-      const fillBar = document.getElementById(`hp-fill-${data.targetId}`);
-      if (fillBar) fillBar.style.width = `${data.hp}%`;
-    }
-
-    // Vurulan kişiyi kırmızı yapıp parlat (Flaş efekti)
-    if (target && target.mesh) {
-      const originalColor = target.mesh.material.color.getHex();
-      target.mesh.material.color.setHex(0xff0000); // Kırmızı renk flaşı
-      
-      // Geri tepme pozisyonunu anlık uygula (server hesaplı)
-      target.mesh.position.set(data.newPos.x, data.newPos.y, data.newPos.z);
-
-      setTimeout(() => {
-        if (target && target.mesh) {
-          target.mesh.material.color.setHex(originalColor);
+// Sesleri arka planda yükle
+audioLoader.load('/assets/jump.mp3', (buffer) => {
+    jumpBuffer = buffer;
+    Object.keys(otherPlayers).forEach(id => {
+        if (otherPlayers[id].jumpSound && !otherPlayers[id].jumpSound.buffer) {
+            otherPlayers[id].jumpSound.setBuffer(buffer);
         }
-      }, 200);
-    }
-  });
-
-  // Ölüm ve Yeniden Canlanma
-  socket.on('playerRespawned', (data) => {
-    let target;
-    if (data.id === myId) {
-      target = localPlayer;
-      document.getElementById('hud-hp-fill').style.width = `100%`;
-      document.getElementById('hud-hp-text').innerText = '100';
-    } else {
-      target = otherPlayers[data.id];
-      const fillBar = document.getElementById(`hp-fill-${data.id}`);
-      if (fillBar) fillBar.style.width = `100%`;
-    }
-
-    if (target && target.mesh) {
-      target.mesh.position.set(data.pos.x, data.pos.y, data.pos.z);
-    }
-  });
-
-  // Oyuncu çıkınca anında sahneden sil (Hayalet oyuncu düzeltmesi)
-  socket.on('playerDisconnected', (id) => {
-    if (otherPlayers[id]) {
-      scene.remove(otherPlayers[id].mesh);
-      delete otherPlayers[id];
-    }
-    const tag = document.getElementById(`tag-${id}`);
-    if (tag) tag.remove();
-  });
-
-  // Sohbet Alıcısı
-  socket.on('chatMessage', (data) => {
-    const msgDiv = document.getElementById('chat-messages');
-    msgDiv.innerHTML += `<div><strong>${data.username}:</strong> ${data.text}</div>`;
-    msgDiv.scrollTop = msgDiv.scrollHeight;
-  });
-}
-
-// Oyuncu sekmesini veya tarayıcısını kapattığı an anında çıkış gönder
-window.addEventListener('beforeunload', () => {
-  if (socket) socket.disconnect();
+    });
 });
 
-// THREE.JS OYUN MOTORU KURULUMU
-function initThree() {
-  const container = document.getElementById('canvas-container');
-  
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0a0512);
-  scene.fog = new THREE.FogExp2(0x0a0512, 0.015);
-
-  camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.set(0, 12, 18);
-
-  renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = true;
-  container.appendChild(renderer.domElement);
-
-  // Işıklandırma
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
-  scene.add(ambientLight);
-
-  const dirLight = new THREE.DirectionalLight(0xa855f7, 0.8);
-  dirLight.position.set(10, 20, 10);
-  scene.add(dirLight);
-
-  // DEV PLATFORM (100x100 Cyber-Grid)
-  const floorGeo = new THREE.BoxGeometry(100, 1, 100);
-  const floorMat = new THREE.MeshStandardMaterial({ 
-    color: 0x140a24, 
-    roughness: 0.9,
-    metalness: 0.1
-  });
-  const floor = new THREE.Mesh(floorGeo, floorMat);
-  floor.position.y = -0.5;
-  scene.add(floor);
-
-  // Neon Izgara Süslemesi
-  const gridHelper = new THREE.GridHelper(100, 50, 0x00ffcc, 0x581c87);
-  gridHelper.position.y = 0.01;
-  scene.add(gridHelper);
-
-  // Ekran Yeniden Boyutlandırma (WebView/Instagram ve Yatay Ekran Fix)
-  window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.style.height = window.innerHeight + 'px';
-  });
-
-  // Dokunma/Tıklama Olayları (PvP ve Dokunma İzi)
-  window.addEventListener('pointerdown', (e) => {
-    // UI elemanlarına tıklandıysa işlemi yok say
-    if (e.target.closest('#chat-container') || e.target.closest('#my-hud') || e.target.closest('#joystick-zone') || e.target.closest('#jump-btn')) {
-      return;
-    }
-
-    const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2(
-      (e.clientX / window.innerWidth) * 2 - 1,
-      -(e.clientY / window.innerHeight) * 2 + 1
-    );
-
-    raycaster.setFromCamera(mouse, camera);
-
-    // Diğer oyuncuları vurma tespiti (PvP)
-    const playerMeshes = Object.values(otherPlayers).map(p => p.mesh);
-    const playerIntersects = raycaster.intersectObjects(playerMeshes);
-
-    if (playerIntersects.length > 0) {
-      const hitMesh = playerIntersects[0].object;
-      const targetId = hitMesh.userData.id;
-      if (targetId) {
-        socket.emit('hitPlayer', { targetId: targetId });
-        return; // Karakter vurulduysa yere tıklama izi çıkartma
-      }
-    }
-
-    // Yere tıklama izi çıkartma
-    const floorIntersect = raycaster.intersectObject(floor);
-    if (floorIntersect.length > 0) {
-      spawnTapIndicator(floorIntersect[0].point);
-    }
-  });
-
-  // Joystick ve Buton Kontrolleri
-  initMobileControls();
-}
-
-// Oyuncu Oluşturma Fonksiyonları
-function createLocalPlayer(data) {
-  const geom = new THREE.CylinderGeometry(0.5, 0.5, 2, 16);
-  const mat = new THREE.MeshStandardMaterial({ color: data.color, roughness: 0.5 });
-  const mesh = new THREE.Mesh(geom, mat);
-  mesh.position.set(data.x, data.y, data.z);
-  scene.add(mesh);
-
-  localPlayer = { mesh: mesh, color: data.color };
-
-  // HUD ismini yaz
-  document.getElementById('hud-name').innerText = data.username;
-}
-
-function createRemotePlayer(data) {
-  const geom = new THREE.CylinderGeometry(0.5, 0.5, 2, 16);
-  const mat = new THREE.MeshStandardMaterial({ color: data.color, roughness: 0.5 });
-  const mesh = new THREE.Mesh(geom, mat);
-  mesh.position.set(data.x, data.y, data.z);
-  
-  // PvP tespiti için ID'sini mesh içine yerleştiriyoruz
-  mesh.userData = { id: data.id };
-  scene.add(mesh);
-
-  otherPlayers[data.id] = { mesh: mesh, color: data.color, username: data.username };
-
-  // Diğer oyuncu için üstte can barı olan HTML nametag oluştur
-  const container = document.getElementById('nametag-overlay-container');
-  const tag = document.createElement('div');
-  tag.id = `tag-${data.id}`;
-  tag.className = 'player-tag';
-  tag.innerHTML = `
-    <div class="tag-hp-bar-bg">
-      <div id="hp-fill-${data.id}" class="tag-hp-bar-fill"></div>
-    </div>
-    <div class="tag-username">${data.username}</div>
-  `;
-  container.appendChild(tag);
-}
-
-// Harika Dokunma İz İşareti (Neon Ring)
-function spawnTapIndicator(point) {
-  const geom = new THREE.RingGeometry(0.01, 0.5, 16);
-  const mat = new THREE.MeshBasicMaterial({ 
-    color: 0x00ffcc, 
-    side: THREE.DoubleSide, 
-    transparent: true, 
-    opacity: 1 
-  });
-  const mesh = new THREE.Mesh(geom, mat);
-  mesh.rotation.x = -Math.PI / 2;
-  mesh.position.set(point.x, 0.05, point.z); // Z-fighting engellemek için hafif havada
-  scene.add(mesh);
-
-  tapIndicators.push({
-    mesh: mesh,
-    scale: 1,
-    opacity: 1
-  });
-}
-
-// Joystick ve Zıplama Kontrolleri
-function initMobileControls() {
-  const manager = nipplejs.create({
-    zone: document.getElementById('joystick-zone'),
-    mode: 'static',
-    position: { left: '50px', bottom: '50px' },
-    color: '#00ffcc'
-  });
-
-  manager.on('move', (evt, data) => {
-    const speed = 0.12;
-    moveDirection.x = data.vector.x * speed;
-    moveDirection.z = -data.vector.y * speed; // 3D'de ileri-geri ekseni Z'dir
-  });
-
-  manager.on('end', () => {
-    moveDirection.x = 0;
-    moveDirection.z = 0;
-  });
-
-  document.getElementById('jump-btn').addEventListener('click', () => {
-    if (!isJumping) {
-      isJumping = true;
-      jumpVelocity = 0.28;
-    }
-  });
-
-  // Sohbet Gönderme
-  const chatInput = document.getElementById('chat-input');
-  const chatSend = document.getElementById('chat-send');
-  chatSend.addEventListener('click', sendChat);
-  chatInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') sendChat();
-  });
-}
-
-function sendChat() {
-  const input = document.getElementById('chat-input');
-  const text = input.value.trim();
-  if (text.length > 0 && socket) {
-    socket.emit('chatMessage', text);
-    input.value = "";
-  }
-}
-
-// HTML Nametaglerin 3D Pozisyonunu Ekrana Yansıtma (Projeksiyon)
-function updateNametags() {
-  for (let id in otherPlayers) {
-    const player = otherPlayers[id];
-    const tagDiv = document.getElementById(`tag-${id}`);
-    if (!tagDiv || !player.mesh) continue;
-
-    const tempV = new THREE.Vector3();
-    player.mesh.getWorldPosition(tempV);
-    tempV.y += 1.8; // Kapsülün kafasının hemen üstü
-
-    tempV.project(camera);
-
-    // Kamera arkasında kalıyorsa gizle
-    if (tempV.z > 1) {
-      tagDiv.style.display = 'none';
-      continue;
-    }
-
-    // Ekran koordinatlarına dönüştürme
-    const x = (tempV.x * 0.5 + 0.5) * window.innerWidth;
-    const y = (tempV.y * -0.5 + 0.5) * window.innerHeight;
-
-    tagDiv.style.display = 'block';
-    tagDiv.style.left = `${x}px`;
-    tagDiv.style.top = `${y}px`;
-  }
-}
-
-// OYUN DÖNGÜSÜ
-function animate() {
-  requestAnimationFrame(animate);
-
-  if (localPlayer) {
-    // Karakter Hareketi ve Bounding Box Sınırları (Platform sınırlarında tut)
-    localPlayer.mesh.position.x = Math.max(-49, Math.min(49, localPlayer.mesh.position.x + moveDirection.x));
-    localPlayer.mesh.position.z = Math.max(-49, Math.min(49, localPlayer.mesh.position.z + moveDirection.z));
-
-    // Zıplama Fiziği
-    if (isJumping) {
-      localPlayer.mesh.position.y += jumpVelocity;
-      jumpVelocity -= gravity;
-      if (localPlayer.mesh.position.y <= 1) {
-        localPlayer.mesh.position.y = 1;
-        isJumping = false;
-        jumpVelocity = 0;
-      }
-    }
-
-    // Kamera Takibi
-    camera.position.x = localPlayer.mesh.position.x;
-    camera.position.z = localPlayer.mesh.position.z + 18;
-    camera.lookAt(localPlayer.mesh.position);
-
-    // Sunucuya yeni konumumuzu gönder
-    socket.emit('move', {
-      x: localPlayer.mesh.position.x,
-      y: localPlayer.mesh.position.y,
-      z: localPlayer.mesh.position.z
+audioLoader.load('/assets/walk.mp3', (buffer) => {
+    walkBuffer = buffer;
+    Object.keys(otherPlayers).forEach(id => {
+        if (otherPlayers[id].walkSound && !otherPlayers[id].walkSound.buffer) {
+            otherPlayers[id].walkSound.setBuffer(buffer);
+        }
     });
-  }
+});
 
-  // Tıklama İzlerinin Efekti ve Sahneden Silinmesi
-  for (let i = tapIndicators.length - 1; i >= 0; i--) {
-    const ind = tapIndicators[i];
-    ind.scale += 0.09;
-    ind.mesh.scale.set(ind.scale, ind.scale, 1);
-    ind.opacity -= 0.05;
-    ind.mesh.material.opacity = ind.opacity;
-
-    if (ind.opacity <= 0) {
-      scene.remove(ind.mesh);
-      ind.mesh.geometry.dispose();
-      ind.mesh.material.dispose();
-      tapIndicators.splice(i, 1);
+function playSound(soundName) {
+    if (sounds[soundName]) {
+        sounds[soundName].currentTime = 0;
+        sounds[soundName].play().catch(e => {});
     }
-  }
-
-  // Nametag konumlarını güncelle
-  updateNametags();
-
-  renderer.render(scene, camera);
 }
+
+// Tarayıcı Ses Engellemesini Aşmak ve Ses Motorunu Aktif Etmek
+const resumeAudioContext = () => {
+    if (THREE.AudioContext.getContext().state === 'suspended') {
+        THREE.AudioContext.getContext().resume();
+    }
+};
+window.addEventListener('click', resumeAudioContext);
+window.addEventListener('touchstart', resumeAudioContext);
+
+function unlockAudio() {
+    resumeAudioContext();
+    Object.keys(sounds).forEach(key => {
+        sounds[key].play().then(() => {
+            if (key !== 'walk') {
+                sounds[key].pause();
+                sounds[key].currentTime = 0;
+            }
+        }).catch(() => {});
+    });
+}
+
+// Global Buton Klik Yakalayıcı
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest('button') || e.target.closest('.game-btn');
+    if (btn) {
+        if (btn.id === 'jump-button') return; // Zıplama kendi özel sesini çalar
+        playSound('click');
+    }
+});
+
+// -------------------------------------------------------------
+// KULLANICI ADI GİRİŞ KISITLAMALARI (SADECE KÜÇÜK HARFLER)
+// -------------------------------------------------------------
+if (usernameInput) {
+    // Kullanıcı adı alanına yazarken anında filtreleme yapar
+    usernameInput.addEventListener('input', (e) => {
+        // Türkçe küçük harfler dahil (ç,ğ,ı,ö,ş,ü) sadece küçük harflere izin verilir.
+        // Büyük harf girilirse otomatik küçültülür, geçersiz sembol/boşluk girilirse anında silinir.
+        let val = e.target.value.toLowerCase();
+        e.target.value = val.replace(/[^a-zçğıöşü]/g, '');
+    });
+
+    usernameInput.setAttribute('type', 'search');
+    usernameInput.setAttribute('autocomplete', 'off');
+    usernameInput.setAttribute('autocorrect', 'off');
+    usernameInput.setAttribute('autocapitalize', 'off');
+    usernameInput.setAttribute('spellcheck', 'false');
+}
+
+if (chatInput) {
+    chatInput.setAttribute('type', 'search');
+    chatInput.setAttribute('autocomplete', 'off');
+    chatInput.setAttribute('autocorrect', 'off');
+    chatInput.setAttribute('autocapitalize', 'off');
+    chatInput.setAttribute('spellcheck', 'false');
+}
+
+if (usernameInput && errorMessage) {
+    usernameInput.parentNode.insertBefore(errorMessage, usernameInput.nextSibling);
+}
+
+function styleGameButton(btn) {
+    if (!btn) return;
+    btn.style.position = 'fixed';
+    btn.style.top = '16px';
+    btn.style.width = '46px';
+    btn.style.height = '46px';
+    btn.style.borderRadius = '50%';
+    btn.style.border = 'none';
+    btn.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    btn.style.color = '#ffffff';
+    btn.style.display = 'flex';
+    btn.style.alignItems = 'center';
+    btn.style.justifyContent = 'center';
+    btn.style.cursor = 'pointer';
+    btn.style.backdropFilter = 'blur(10px)';
+    btn.style.webkitBackdropFilter = 'blur(10px)';
+    btn.style.transition = 'background-color 0.2s, transform 0.1s';
+    btn.style.outline = 'none';
+    btn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+    btn.style.zIndex = '9999';
+    btn.style.padding = '0';
+    
+    btn.addEventListener('touchstart', () => { 
+        btn.style.transform = 'scale(0.9)'; 
+    });
+    btn.addEventListener('touchend', () => { btn.style.transform = 'scale(1)'; });
+}
+
+let unreadCount = 0;
+let chatBadge = document.getElementById('chat-badge');
+
+if (btnChat) {
+    styleGameButton(btnChat);
+    btnChat.style.right = '16px'; 
+    
+    if (!chatBadge) {
+        chatBadge = document.createElement('span');
+        chatBadge.id = 'chat-badge';
+        chatBadge.style.position = 'absolute';
+        chatBadge.style.top = '-2px';
+        chatBadge.style.right = '-2px';
+        chatBadge.style.backgroundColor = '#ff3838';
+        chatBadge.style.color = '#ffffff';
+        chatBadge.style.borderRadius = '50%';
+        chatBadge.style.padding = '2px 6px';
+        chatBadge.style.fontSize = '12px';
+        chatBadge.style.fontWeight = 'bold';
+        chatBadge.style.display = 'none';
+        chatBadge.style.minWidth = '14px';
+        chatBadge.style.textAlign = 'center';
+        chatBadge.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
+        chatBadge.style.zIndex = '10000';
+        btnChat.appendChild(chatBadge);
+    }
+}
+
+function updateChatBadge() {
+    if (!chatBadge) return;
+    if (unreadCount > 0) {
+        chatBadge.innerText = unreadCount;
+        chatBadge.style.display = 'block';
+    } else {
+        chatBadge.style.display = 'none';
+    }
+}
+
+const inputs = [usernameInput, chatInput];
+inputs.forEach(input => {
+    if (input) {
+        const resetScroll = () => {
+            setTimeout(() => {
+                window.scrollTo(0, 0);
+                document.body.scrollTop = 0;
+            }, 30);
+        };
+        input.addEventListener('focus', resetScroll);
+        input.addEventListener('blur', resetScroll);
+    }
+});
+
+const fsBtn = document.createElement('button');
+fsBtn.id = 'fullscreen-btn';
+const fsIcon = '<svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>';
+const exitFsIcon = '<svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6m10-6h-6v6M4 10h6V4m10 6h-6V4"></path></svg>';
+fsBtn.innerHTML = fsIcon;
+styleGameButton(fsBtn);
+fsBtn.style.left = '16px'; 
+document.body.appendChild(fsBtn);
+
+function toggleFullscreen() {
+    if (!document.fullscreenElement && !document.mozFullScreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement ) {
+        if (document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen();
+        } else if (document.documentElement.msRequestFullscreen) {
+            document.documentElement.msRequestFullscreen();
+        } else if (document.documentElement.mozRequestFullScreen) {
+            document.documentElement.mozRequestFullScreen();
+        } else if (document.documentElement.webkitRequestFullscreen) {
+            document.documentElement.webkitRequestFullscreen(Element.ALLOW_KEYBOARD_INPUT);
+        }
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        } else if (document.msExitFullscreen) {
+            document.msExitFullscreen();
+        } else if (document.mozCancelFullScreen) {
+            document.mozCancelFullScreen();
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        }
+    }
+}
+fsBtn.addEventListener('click', toggleFullscreen);
+
+function updateFsIcon() {
+    if (document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement) {
+        fsBtn.innerHTML = exitFsIcon;
+    } else {
+        fsBtn.innerHTML = fsIcon;
+    }
+}
+document.addEventListener('fullscreenchange', updateFsIcon);
+document.addEventListener('webkitfullscreenchange', updateFsIcon);
+document.addEventListener('mozfullscreenchange', updateFsIcon);
+document.addEventListener('MSFullscreenChange', updateFsIcon);
+
+let localPlayerId = null;
+let playerColor = '#00a8ff';
+let scene, camera, renderer;
+const otherPlayers = {};
+let localPlayerMesh = null;
+let position = null; 
+let velocityY = 0;
+let isGrounded = true;
+const GRAVITY = -0.015;
+const JUMP_FORCE = 0.32;
+const SPEED = 0.12;
+const cameraDist = 8;
+let cameraYaw = 0;
+let cameraPitch = 0.3;
+let joystickTouchId = null;
+let cameraTouchId = null;
+let startTouchX = 0, startTouchY = 0;
+let joystickActive = false;
+let joyDX = 0, joyDY = 0;
+const PLATFORM_RADIUS = 24.5;
+let pickerPos = { x: 75, y: 75 };
+
+let localJumpedThisFrame = false; 
+
+function rgbToHex(r, g, b) {
+    return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+
+function drawWheel(selectX = null, selectY = null) {
+    if (!colorWheel) return;
+    const ctx = colorWheel.getContext('2d');
+    const radius = colorWheel.width / 2;
+    ctx.clearRect(0, 0, colorWheel.width, colorWheel.height);
+    for (let i = 0; i < 360; i++) {
+        const startAngle = (i - 1.5) * Math.PI / 180;
+        const endAngle = (i + 0.5) * Math.PI / 180;
+        ctx.beginPath();
+        ctx.moveTo(radius, radius);
+        ctx.arc(radius, radius, radius, startAngle, endAngle);
+        ctx.closePath();
+        const grad = ctx.createRadialGradient(radius, radius, 0, radius, radius, radius);
+        grad.addColorStop(0, '#ffffff');
+        grad.addColorStop(1, `hsl(${i}, 100%, 50%)`);
+        ctx.fillStyle = grad;
+        ctx.fill();
+    }
+    if (selectX !== null && selectY !== null) {
+        pickerPos = { x: selectX, y: selectY };
+    }
+    ctx.beginPath();
+    ctx.arc(pickerPos.x, pickerPos.y, 6, 0, Math.PI * 2);
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(pickerPos.x, pickerPos.y, 5, 0, Math.PI * 2);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+}
+
+function handleColorPick(e) {
+    const rect = colorWheel.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const x = Math.max(0, Math.min(colorWheel.width, clientX - rect.left));
+    const y = Math.max(0, Math.min(colorWheel.height, clientY - rect.top));
+    const cx = colorWheel.width / 2;
+    const cy = colorWheel.height / 2;
+    const dist = Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy));
+    if (dist <= cx) {
+        const ctx = colorWheel.getContext('2d');
+        const imgData = ctx.getImageData(x, y, 1, 1).data;
+        playerColor = rgbToHex(imgData[0], imgData[1], imgData[2]);
+        drawWheel(x, y);
+    }
+}
+
+const initialAngle = 200 * Math.PI / 180;
+pickerPos = {
+    x: 75 + 55 * Math.cos(initialAngle),
+    y: 75 + 55 * Math.sin(initialAngle)
+};
+drawWheel();
+
+if (colorWheel) {
+    colorWheel.addEventListener('mousedown', (e) => {
+        handleColorPick(e);
+        const onMouseMove = (moveEv) => handleColorPick(moveEv);
+        const onMouseUp = () => {
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
+        };
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+    });
+    colorWheel.addEventListener('touchstart', (e) => {
+        handleColorPick(e);
+        const onTouchMove = (moveEv) => handleColorPick(moveEv);
+        const onTouchEnd = () => {
+            window.removeEventListener('touchmove', onTouchMove);
+            window.removeEventListener('touchend', onTouchEnd);
+        };
+        window.addEventListener('touchmove', onTouchMove);
+        window.addEventListener('touchend', onTouchEnd);
+    });
+}
+
+let isJoining = false;
+
+playButton.addEventListener('click', joinGame);
+usernameInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') joinGame(); });
+
+function joinGame() {
+    if (isJoining || localPlayerId) return;
+
+    const name = usernameInput.value.trim().toLowerCase(); // Garanti olması açısından harfleri tamamen küçült
+    errorMessage.classList.remove('show');
+    if (name.length < 3 || name.length > 16) {
+        errorMessage.innerText = "Kullanıcı adı en az 3, en fazla 16 karakter olmalıdır!";
+        errorMessage.classList.add('show');
+        return;
+    }
+
+    isJoining = true;
+    if (playButton) {
+        playButton.disabled = true;
+        playButton.style.opacity = '0.6';
+        playButton.innerText = "Bağlanıyor...";
+    }
+
+    unlockAudio();
+    socket.emit('joinRequest', { username: name, color: playerColor });
+}
+
+socket.on('joinResponse', (response) => {
+    if (response.success) {
+        localPlayerId = response.id;
+        playerColor = response.color;
+        loginScreen.style.opacity = '0';
+        loginScreen.style.transform = 'scale(1.1)';
+        setTimeout(() => {
+            loginScreen.classList.add('hidden');
+            gameUI.classList.remove('hidden');
+            try {
+                initEngine();
+                setupMultiplayer(response.players);
+            } catch (err) {
+                alert("Oyun motoru başlatma hatası: " + err.message);
+            }
+        }, 500);
+    } else {
+        isJoining = false;
+        if (playButton) {
+            playButton.disabled = false;
+            playButton.style.opacity = '1';
+            playButton.innerText = "Katıl";
+        }
+        errorMessage.innerText = response.error;
+        errorMessage.classList.add('show');
+    }
+});
+
+function setupMultiplayer(initialPlayers) {
+    Object.keys(initialPlayers).forEach((id) => {
+        if (id !== localPlayerId) {
+            createOtherPlayer(initialPlayers[id]);
+        }
+    });
+}
+
+socket.on('playerJoined', (playerData) => {
+    if (playerData.id !== localPlayerId) {
+        createOtherPlayer(playerData);
+    }
+});
+
+// -------------------------------------------------------------
+// DIGER OYUNCU HAREKETLERI (SMOOTH LERP VE 3D SES TETIKLENMESI)
+// -------------------------------------------------------------
+socket.on('playerMoved', (playerData) => {
+    const other = otherPlayers[playerData.id];
+    if (other) {
+        // Doğrudan pozisyonu eşitlemek yerine yumuşak geçiş için hedef koordinatları kaydediyoruz
+        other.targetPosition.set(playerData.x, playerData.y, playerData.z);
+        other.targetRotationY = playerData.ry;
+
+        // 3D Konumsal Yürüme Sesi Kontrolü
+        if (playerData.walking) {
+            if (other.walkSound && other.walkSound.buffer && !other.walkSound.isPlaying) {
+                other.walkSound.play();
+            }
+        } else {
+            if (other.walkSound && other.walkSound.isPlaying) {
+                other.walkSound.stop();
+            }
+        }
+
+        // 3D Konumsal Zıplama Sesi Kontrolü
+        if (playerData.jumping) {
+            if (other.jumpSound && other.jumpSound.buffer) {
+                if (other.jumpSound.isPlaying) {
+                    other.jumpSound.stop();
+                }
+                other.jumpSound.play();
+            }
+        }
+    }
+});
+
+socket.on('playerLeft', (id) => {
+    if (otherPlayers[id]) {
+        if (otherPlayers[id].walkSound && otherPlayers[id].walkSound.isPlaying) {
+            otherPlayers[id].walkSound.stop();
+        }
+        scene.remove(otherPlayers[id].mesh);
+        delete otherPlayers[id];
+    }
+});
+
+btnChat.addEventListener('click', () => {
+    chatPanel.classList.toggle('closed');
+    if (!chatPanel.classList.contains('closed')) {
+        unreadCount = 0;
+        updateChatBadge();
+    }
+});
+
+chatClose.addEventListener('click', () => {
+    chatPanel.classList.add('closed');
+});
+
+chatSend.addEventListener('click', sendChatMessage);
+chatInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendChatMessage(); });
+
+function sendChatMessage() {
+    const text = chatInput.value.trim();
+    if (text) {
+        socket.emit('chatMessage', text);
+        chatInput.value = '';
+    }
+}
+
+socket.on('chatMessage', (data) => {
+    const msgElement = document.createElement('div');
+    msgElement.className = 'msg';
+    msgElement.innerHTML = `<span class="msg-sender" style="color: ${data.color};">${data.username}:</span>${data.text}`;
+    chatMessages.appendChild(msgElement);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    if (chatPanel.classList.contains('closed')) {
+        unreadCount++;
+        updateChatBadge();
+    }
+});
+
+function createBeanGeometry() {
+    try {
+        return new THREE.CapsuleGeometry(0.4, 0.8, 8, 16);
+    } catch(e) {
+        return new THREE.CylinderGeometry(0.4, 0.4, 0.8, 16);
+    }
+}
+
+function createPlayerGroup(color, username = null) {
+    const group = new THREE.Group();
+    const bodyGeo = createBeanGeometry();
+    const bodyMat = new THREE.MeshPhongMaterial({ color: color, roughness: 0.5 });
+    const body = new THREE.Mesh(bodyGeo, bodyMat);
+    body.position.y = 0.8;
+    group.add(body);
+    const eyeGeo = new THREE.SphereGeometry(0.06, 8, 8);
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+    leftEye.position.set(-0.15, 1.0, 0.35);
+    group.add(leftEye);
+    const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+    rightEye.position.set(0.15, 1.0, 0.35);
+    group.add(rightEye);
+    if (username) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        if (ctx.roundRect) {
+            ctx.roundRect(10, 10, 236, 44, 15);
+        } else {
+            ctx.rect(10, 10, 236, 44);
+        }
+        ctx.fill();
+        ctx.font = 'bold 24px Arial';
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.fillText(username, 128, 40);
+        const texture = new THREE.CanvasTexture(canvas);
+        const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+        const sprite = new THREE.Sprite(spriteMaterial);
+        sprite.scale.set(1.5, 0.375, 1);
+        sprite.position.y = 1.9;
+        group.add(sprite);
+    }
+    return group;
+}
+
+function createOtherPlayer(playerData) {
+    if (playerData.id === localPlayerId) return;
+    
+    if (otherPlayers[playerData.id]) {
+        scene.remove(otherPlayers[playerData.id].mesh);
+        delete otherPlayers[playerData.id];
+    }
+    
+    const color = playerData.color || '#80d8ff';
+    const mesh = createPlayerGroup(color, playerData.username);
+    mesh.position.set(playerData.x, playerData.y, playerData.z);
+    scene.add(mesh);
+
+    // Diğer oyuncu için 3D Positional Audio (Zıplama) oluştur
+    const jumpSound = new THREE.PositionalAudio(listener);
+    jumpSound.setDistanceModel('linear');
+    jumpSound.setRefDistance(2);    
+    jumpSound.setMaxDistance(20);   
+    jumpSound.setRolloffFactor(1);
+    if (jumpBuffer) {
+        jumpSound.setBuffer(jumpBuffer);
+    }
+    mesh.add(jumpSound);
+
+    // Diğer oyuncu için 3D Positional Audio (Yürüme) oluştur
+    const walkSound = new THREE.PositionalAudio(listener);
+    walkSound.setDistanceModel('linear');
+    walkSound.setRefDistance(2);
+    walkSound.setMaxDistance(20);
+    walkSound.setRolloffFactor(1);
+    walkSound.setLoop(true);
+    walkSound.setVolume(0.35);
+    if (walkBuffer) {
+        walkSound.setBuffer(walkBuffer);
+    }
+    mesh.add(walkSound);
+    
+    // Smooth hareket için hedef noktaları burada başlatıyoruz
+    otherPlayers[playerData.id] = { 
+        mesh, 
+        username: playerData.username, 
+        color: color,
+        jumpSound,
+        walkSound,
+        targetPosition: new THREE.Vector3(playerData.x, playerData.y, playerData.z),
+        targetRotationY: playerData.ry
+    };
+}
+
+function initEngine() {
+    position = new THREE.Vector3(0, 1, 0);
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xdbeeff);
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    
+    // Kameraya kulaklığı bağla (3D Ses İçin Kritik)
+    listener = new THREE.AudioListener();
+    camera.add(listener);
+
+    renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('game-canvas'), antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    const floorGeo = new THREE.CylinderGeometry(25, 25, 1, 64);
+    const floorMat = new THREE.MeshPhongMaterial({ color: 0x1d1d23, roughness: 0.8 });
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.position.y = -0.5;
+    scene.add(floor);
+    const gridGeo = new THREE.CircleGeometry(25, 64);
+    const gridMat = new THREE.ShaderMaterial({
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            varying vec2 vUv;
+            void main() {
+                float thickness = 0.03;
+                float lx = step(thickness, fract(vUv.x * 50.0));
+                float ly = step(thickness, fract(vUv.y * 50.0));
+                if (lx > 0.5 && ly > 0.5) discard;
+                gl_FragColor = vec4(0.2, 0.2, 0.2, 0.8);
+            }
+        `,
+        transparent: true,
+        depthWrite: false
+    });
+    const gridHelper = new THREE.Mesh(gridGeo, gridMat);
+    gridHelper.rotation.x = -Math.PI / 2;
+    gridHelper.position.y = 0.01;
+    scene.add(gridHelper);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(5, 15, 5);
+    scene.add(dirLight);
+    localPlayerMesh = createPlayerGroup(playerColor);
+    scene.add(localPlayerMesh);
+    setupControls();
+    tick();
+}
+
+function setupControls() {
+    window.addEventListener('touchstart', (e) => {
+        if (e.target.closest('.side-panel') || e.target.closest('#ui-bar') || e.target.closest('#login-screen') || e.target.closest('#fullscreen-btn')) {
+            return;
+        }
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            const touch = e.changedTouches[i];
+            if (touch.clientX < window.innerWidth * 0.45 && touch.clientY > window.innerHeight * 0.5 && joystickTouchId === null) {
+                joystickTouchId = touch.identifier;
+                joystickActive = true;
+                updateJoystick(touch);
+            } 
+            else if (touch.clientX >= window.innerWidth / 2 && cameraTouchId === null) {
+                if (e.target.closest('#jump-button')) {
+                    continue; 
+                }
+                cameraTouchId = touch.identifier;
+                startTouchX = touch.clientX;
+                startTouchY = touch.clientY;
+            }
+        }
+    }, { passive: false });
+    window.addEventListener('touchmove', (e) => {
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            const touch = e.changedTouches[i];
+            if (touch.identifier === joystickTouchId) {
+                updateJoystick(touch);
+            } 
+            else if (touch.identifier === cameraTouchId) {
+                const deltaX = touch.clientX - startTouchX;
+                const deltaY = touch.clientY - startTouchY;
+                cameraYaw -= deltaX * 0.007;
+                cameraPitch = Math.max(0.05, Math.min(Math.PI / 2.2, cameraPitch + deltaY * 0.005));
+                startTouchX = touch.clientX;
+                startTouchY = touch.clientY;
+            }
+        }
+    }, { passive: false });
+    window.addEventListener('touchend', (e) => {
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            const touch = e.changedTouches[i];
+            if (touch.identifier === joystickTouchId) {
+                joystickTouchId = null;
+                joystickActive = false;
+                joyDX = 0;
+                joyDY = 0;
+                joystickThumb.style.transform = 'translate(-50%, -50%)';
+            } 
+            else if (touch.identifier === cameraTouchId) {
+                cameraTouchId = null;
+            }
+        }
+    });
+    jumpButton.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (isGrounded) {
+            velocityY = JUMP_FORCE;
+            isGrounded = false;
+            playSound('jump');
+            localJumpedThisFrame = true; 
+        }
+    });
+}
+
+function updateJoystick(touch) {
+    const rect = joystickBase.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    let dx = touch.clientX - centerX;
+    let dy = touch.clientY - centerY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const maxRadius = rect.width / 2;
+    if (distance > maxRadius) {
+        dx = (dx / distance) * maxRadius;
+        dy = (dy / distance) * maxRadius;
+    }
+    joystickThumb.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    joyDX = dx / maxRadius;
+    joyDY = dy / maxRadius;
+}
+
+let lastFrameTime = performance.now();
+const fpsInterval = 1000 / 60;
+function tick() {
+    requestAnimationFrame(tick);
+    const now = performance.now();
+    const elapsed = now - lastFrameTime;
+    if (elapsed >= fpsInterval) {
+        lastFrameTime = now - (elapsed % fpsInterval);
+        updatePhysics();
+        if (renderer && scene && camera) {
+            renderer.render(scene, camera);
+        }
+    }
+}
+
+function updatePhysics() {
+    velocityY += GRAVITY;
+    position.y += velocityY;
+    
+    if (position.y <= 0) {
+        position.y = 0;
+        velocityY = 0;
+        isGrounded = true;
+    } else {
+        isGrounded = false;
+    }
+    
+    const isMoving = joystickActive && (joyDX !== 0 || joyDY !== 0);
+    if (isMoving && isGrounded) {
+        if (sounds.walk.paused) {
+            sounds.walk.play().catch(e => {});
+        }
+    } else {
+        if (!sounds.walk.paused) {
+            sounds.walk.pause();
+            sounds.walk.currentTime = 0;
+        }
+    }
+
+    if (isMoving) {
+        const forwardX = -Math.sin(cameraYaw);
+        const forwardZ = -Math.cos(cameraYaw);
+        const rightX = Math.cos(cameraYaw);
+        const rightZ = -Math.sin(cameraYaw);
+        const moveX = (forwardX * -joyDY) + (rightX * joyDX);
+        const moveZ = (forwardZ * -joyDY) + (rightZ * joyDX);
+        position.x += moveX * SPEED;
+        position.z += moveZ * SPEED;
+        const angle = Math.atan2(moveX, moveZ);
+        if (localPlayerMesh) {
+            localPlayerMesh.rotation.y = angle;
+        }
+    }
+    const distFromCenter = Math.sqrt(position.x * position.x + position.z * position.z);
+    if (distFromCenter > PLATFORM_RADIUS) {
+        const angle = Math.atan2(position.z, position.x);
+        position.x = Math.cos(angle) * PLATFORM_RADIUS;
+        position.z = Math.sin(angle) * PLATFORM_RADIUS;
+    }
+    if (localPlayerMesh) {
+        localPlayerMesh.position.copy(position);
+    }
+    const targetCamX = position.x + cameraDist * Math.sin(cameraYaw) * Math.cos(cameraPitch);
+    const targetCamY = position.y + 1.2 + cameraDist * Math.sin(cameraPitch);
+    const targetCamZ = position.z + cameraDist * Math.cos(cameraYaw) * Math.cos(cameraPitch);
+    camera.position.set(targetCamX, targetCamY, targetCamZ);
+    camera.lookAt(position.x, position.y + 1.0, position.z);
+    
+    // -------------------------------------------------------------
+    // DIGER OYUNCULARI LERP ILE PÜRÜZSÜZ HALE GETİRME (PING GIDERICI)
+    // -------------------------------------------------------------
+    Object.keys(otherPlayers).forEach(id => {
+        const other = otherPlayers[id];
+        if (other && other.mesh) {
+            // Saniyede 60 karede hedef konuma %15 yaklaşmasını sağlayarak akıcı kayma sağlıyoruz
+            other.mesh.position.lerp(other.targetPosition, 0.15);
+            
+            // Dönüş açısını da pürüzsüz yapıyoruz
+            other.mesh.rotation.y = THREE.MathUtils.lerp(other.mesh.rotation.y, other.targetRotationY, 0.15);
+        }
+    });
+
+    if (socket.connected && localPlayerId && localPlayerMesh) {
+        socket.emit('move', {
+            x: position.x,
+            y: position.y,
+            z: position.z,
+            ry: localPlayerMesh.rotation.y,
+            walking: isMoving && isGrounded, 
+            jumping: localJumpedThisFrame      
+        });
+        
+        localJumpedThisFrame = false; 
+    }
+}
+
+window.addEventListener('resize', () => {
+    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
+        return;
+    }
+    if (camera && renderer) {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+});
