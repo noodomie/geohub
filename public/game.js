@@ -22,6 +22,75 @@ const chatInput = document.getElementById('chat-input');
 const chatSend = document.getElementById('chat-send');
 const chatMessages = document.getElementById('chat-messages');
 
+// 2D Yerel Sesler (Sadece kendi duyacağımız sesler ve arayüz klikleri)
+const sounds = {
+    click: new Audio('/assets/click.mp3'),
+    walk: new Audio('/assets/walk.mp3'),
+    jump: new Audio('/assets/jump.mp3')
+};
+
+sounds.walk.loop = true;
+sounds.walk.volume = 0.35;
+sounds.click.volume = 0.5;
+sounds.jump.volume = 0.55;
+
+// Diğer oyuncuların 3D sesleri için yüklenecek audio buffer'ları
+let listener;
+const audioLoader = new THREE.AudioLoader();
+let jumpBuffer = null;
+let walkBuffer = null;
+
+// Sesleri arka planda yükle ve hazır olunca diğer oyunculara bağla
+audioLoader.load('/assets/jump.mp3', (buffer) => {
+    jumpBuffer = buffer;
+    Object.keys(otherPlayers).forEach(id => {
+        if (otherPlayers[id].jumpSound && !otherPlayers[id].jumpSound.buffer) {
+            otherPlayers[id].jumpSound.setBuffer(buffer);
+        }
+    });
+});
+
+audioLoader.load('/assets/walk.mp3', (buffer) => {
+    walkBuffer = buffer;
+    Object.keys(otherPlayers).forEach(id => {
+        if (otherPlayers[id].walkSound && !otherPlayers[id].walkSound.buffer) {
+            otherPlayers[id].walkSound.setBuffer(buffer);
+        }
+    });
+});
+
+function playSound(soundName) {
+    if (sounds[soundName]) {
+        sounds[soundName].currentTime = 0;
+        sounds[soundName].play().catch(e => {});
+    }
+}
+
+// Tarayıcının ses engellemesini (Autoplay Block) aşmak için tetikleyici
+function unlockAudio() {
+    if (THREE.AudioContext.getContext().state === 'suspended') {
+        THREE.AudioContext.getContext().resume();
+    }
+    Object.keys(sounds).forEach(key => {
+        sounds[key].play().then(() => {
+            if (key !== 'walk') {
+                sounds[key].pause();
+                sounds[key].currentTime = 0;
+            }
+        }).catch(() => {});
+    });
+}
+
+// Global Buton Klik Yakalayıcı (Her butona basıldığında click sesi çalar)
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest('button') || e.target.closest('.game-btn');
+    if (btn) {
+        // Zıplama butonu kendi jump sesini çıkaracağı için onu klik sesinden muaf tutuyoruz
+        if (btn.id === 'jump-button') return;
+        playSound('click');
+    }
+});
+
 if (usernameInput && errorMessage) {
     usernameInput.parentNode.insertBefore(errorMessage, usernameInput.nextSibling);
 }
@@ -65,7 +134,9 @@ function styleGameButton(btn) {
     btn.style.zIndex = '9999';
     btn.style.padding = '0';
     
-    btn.addEventListener('touchstart', () => { btn.style.transform = 'scale(0.9)'; });
+    btn.addEventListener('touchstart', () => { 
+        btn.style.transform = 'scale(0.9)'; 
+    });
     btn.addEventListener('touchend', () => { btn.style.transform = 'scale(1)'; });
 }
 
@@ -189,6 +260,8 @@ let joyDX = 0, joyDY = 0;
 const PLATFORM_RADIUS = 24.5;
 let pickerPos = { x: 75, y: 75 };
 
+let localJumpedThisFrame = false; // Ağ üzerinden zıplama bilgisini senkronize etmek için
+
 function rgbToHex(r, g, b) {
     return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 }
@@ -301,6 +374,8 @@ function joinGame() {
         playButton.innerText = "Bağlanıyor...";
     }
 
+    unlockAudio();
+
     socket.emit('joinRequest', { username: name, color: playerColor });
 }
 
@@ -347,14 +422,40 @@ socket.on('playerJoined', (playerData) => {
 });
 
 socket.on('playerMoved', (playerData) => {
-    if (otherPlayers[playerData.id]) {
-        otherPlayers[playerData.id].mesh.position.set(playerData.x, playerData.y, playerData.z);
-        otherPlayers[playerData.id].mesh.rotation.y = playerData.ry;
+    const other = otherPlayers[playerData.id];
+    if (other) {
+        other.mesh.position.set(playerData.x, playerData.y, playerData.z);
+        other.mesh.rotation.y = playerData.ry;
+
+        // 3D Konumsal Yürüme Sesi Kontrolü
+        if (playerData.walking) {
+            if (other.walkSound && other.walkSound.buffer && !other.walkSound.isPlaying) {
+                other.walkSound.play();
+            }
+        } else {
+            if (other.walkSound && other.walkSound.isPlaying) {
+                other.walkSound.pause();
+            }
+        }
+
+        // 3D Konumsal Zıplama Sesi Kontrolü
+        if (playerData.jumping) {
+            if (other.jumpSound && other.jumpSound.buffer) {
+                if (other.jumpSound.isPlaying) {
+                    other.jumpSound.stop();
+                }
+                other.jumpSound.play();
+            }
+        }
     }
 });
 
 socket.on('playerLeft', (id) => {
     if (otherPlayers[id]) {
+        // Çıkış yaparken çalan yürüyüş sesini kapat ki arkada ghost loop kalmasın
+        if (otherPlayers[id].walkSound && otherPlayers[id].walkSound.isPlaying) {
+            otherPlayers[id].walkSound.stop();
+        }
         scene.remove(otherPlayers[id].mesh);
         delete otherPlayers[id];
     }
@@ -389,6 +490,7 @@ socket.on('chatMessage', (data) => {
     msgElement.innerHTML = `<span class="msg-sender" style="color: ${data.color};">${data.username}:</span>${data.text}`;
     chatMessages.appendChild(msgElement);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+    
     if (chatPanel.classList.contains('closed')) {
         unreadCount++;
         updateChatBadge();
@@ -456,7 +558,38 @@ function createOtherPlayer(playerData) {
     const mesh = createPlayerGroup(color, playerData.username);
     mesh.position.set(playerData.x, playerData.y, playerData.z);
     scene.add(mesh);
-    otherPlayers[playerData.id] = { mesh, username: playerData.username, color: color };
+
+    // Diğer oyuncu için 3D Positional Audio (Zıplama) oluştur
+    const jumpSound = new THREE.PositionalAudio(listener);
+    jumpSound.setDistanceModel('linear');
+    jumpSound.setRefDistance(2);    // 2 birime kadar tam ses seviyesi
+    jumpSound.setMaxDistance(20);   // 20 birimden sonra ses tamamen kesilir
+    jumpSound.setRolloffFactor(1);
+    if (jumpBuffer) {
+        jumpSound.setBuffer(jumpBuffer);
+    }
+    mesh.add(jumpSound);
+
+    // Diğer oyuncu için 3D Positional Audio (Yürüme) oluştur
+    const walkSound = new THREE.PositionalAudio(listener);
+    walkSound.setDistanceModel('linear');
+    walkSound.setRefDistance(2);
+    walkSound.setMaxDistance(20);
+    walkSound.setRolloffFactor(1);
+    walkSound.setLoop(true);
+    walkSound.setVolume(0.35);
+    if (walkBuffer) {
+        walkSound.setBuffer(walkBuffer);
+    }
+    mesh.add(walkSound);
+    
+    otherPlayers[playerData.id] = { 
+        mesh, 
+        username: playerData.username, 
+        color: color,
+        jumpSound,
+        walkSound
+    };
 }
 
 function initEngine() {
@@ -464,6 +597,11 @@ function initEngine() {
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0xdbeeff);
     camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    
+    // Konumsal ses dinleyicisini kameraya bağlıyoruz
+    listener = new THREE.AudioListener();
+    camera.add(listener);
+
     renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('game-canvas'), antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -567,6 +705,8 @@ function setupControls() {
         if (isGrounded) {
             velocityY = JUMP_FORCE;
             isGrounded = false;
+            playSound('jump');
+            localJumpedThisFrame = true; // Sunucu paketine zıpladığımızı ekliyoruz
         }
     });
 }
@@ -604,8 +744,10 @@ function tick() {
 }
 
 function updatePhysics() {
+    let wasGrounded = isGrounded;
     velocityY += GRAVITY;
     position.y += velocityY;
+    
     if (position.y <= 0) {
         position.y = 0;
         velocityY = 0;
@@ -613,7 +755,20 @@ function updatePhysics() {
     } else {
         isGrounded = false;
     }
-    if (joystickActive && (joyDX !== 0 || joyDY !== 0)) {
+    
+    const isMoving = joystickActive && (joyDX !== 0 || joyDY !== 0);
+    if (isMoving && isGrounded) {
+        if (sounds.walk.paused) {
+            sounds.walk.play().catch(e => {});
+        }
+    } else {
+        if (!sounds.walk.paused) {
+            sounds.walk.pause();
+            sounds.walk.currentTime = 0;
+        }
+    }
+
+    if (isMoving) {
         const forwardX = -Math.sin(cameraYaw);
         const forwardZ = -Math.cos(cameraYaw);
         const rightX = Math.cos(cameraYaw);
@@ -641,13 +796,19 @@ function updatePhysics() {
     const targetCamZ = position.z + cameraDist * Math.cos(cameraYaw) * Math.cos(cameraPitch);
     camera.position.set(targetCamX, targetCamY, targetCamZ);
     camera.lookAt(position.x, position.y + 1.0, position.z);
+    
     if (socket.connected && localPlayerId && localPlayerMesh) {
         socket.emit('move', {
             x: position.x,
             y: position.y,
             z: position.z,
-            ry: localPlayerMesh.rotation.y
+            ry: localPlayerMesh.rotation.y,
+            walking: isMoving && isGrounded, // Yürüme durumumuz
+            jumping: localJumpedThisFrame      // Zıplama durumumuz (Sadece zıplandığı kare true olur)
         });
+        
+        // Zıplama sinyalini gönderdikten sonra hemen sıfırlıyoruz ki her kare zıplıyormuş gibi algılanmasın
+        localJumpedThisFrame = false; 
     }
 }
 
