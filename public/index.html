@@ -1,63 +1,63 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GeoHub - Multiplayer</title>
-    <link rel="stylesheet" href="style.css">
-    
-    <script src="/three.min.js"></script>
-    <script src="/socket.io/socket.io.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>GeoHub - Multiplayer Cyber Arena</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.9.0/nipplejs.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
 
-    <div id="login-screen" class="overlay">
-        <div class="login-box">
-            <h1>GEOHUB</h1>
-            <div class="input-group">
-                <input type="text" id="username-input" placeholder="Kullanıcı Adı" minlength="3" maxlength="16" autocomplete="off">
-            </div>
-            <div class="color-picker-container">
-                <span class="color-label">Karakter Rengi</span>
-                <canvas id="color-wheel" width="150" height="150"></canvas>
-            </div>
-            <button id="play-button">Katıl</button>
-            <div id="error-message" class="error-msg"></div>
+  <div id="landscape-warning">
+    <div class="warning-box">
+      <div class="rotate-phone-icon">📱</div>
+      <h2>Yatay Mod Gerekli!</h2>
+      <p>Lütfen dikey kilidini açıp cihazınızı <strong>Yatay (Landscape)</strong> konuma çevirin.</p>
+    </div>
+  </div>
+
+  <div id="login-container">
+    <div class="login-card">
+      <h1 class="logo-text">GeoHub</h1>
+      <p class="subtitle">Multiplayer Arena</p>
+      <input type="text" id="username-input" placeholder="kullanıcı adı yazın..." autocomplete="off" maxlength="12">
+      <button id="join-btn">KAYDOL VE KATIL</button>
+      <div id="login-error" class="error-msg"></div>
+    </div>
+  </div>
+
+  <div id="game-container">
+    <div id="canvas-container"></div>
+
+    <div id="my-hud">
+      <div class="hud-item"><span class="icon">👤</span> <span id="hud-name">-</span></div>
+      <div class="hud-item">
+        <span class="icon">❤️</span> HP: 
+        <div class="hud-bar-bg">
+          <div id="hud-hp-fill" style="width: 100%;"></div>
         </div>
+        <span id="hud-hp-text">100</span>/100
+      </div>
     </div>
 
-    <div id="game-ui" class="hidden">
-        <div id="ui-bar">
-            <button id="btn-chat" class="ui-bar-btn" title="Sohbet">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                </svg>
-            </button>
-        </div>
+    <div id="nametag-overlay-container"></div>
 
-        <div id="chat-panel" class="side-panel closed">
-            <div class="panel-header">
-                <h3>Sohbet</h3>
-                <button id="chat-close" class="panel-close">&times;</button>
-            </div>
-            <div id="chat-messages"></div>
-            <div class="panel-input-area">
-                <input type="text" id="chat-input" placeholder="Mesaj" autocomplete="off">
-                <button id="chat-send">Gönder</button>
-            </div>
-        </div>
+    <div id="joystick-zone"></div>
 
-        <div id="joystick-container">
-            <div id="joystick-base">
-                <div id="joystick-thumb"></div>
-            </div>
-        </div>
+    <button id="jump-btn">ZIPLA</button>
 
-        <button id="jump-button">Zıpla</button>
+    <div id="chat-container">
+      <div id="chat-messages"></div>
+      <div class="chat-input-row">
+        <input type="text" id="chat-input" placeholder="Mesaj gönder..." autocomplete="off">
+        <button id="chat-send">Send</button>
+      </div>
     </div>
+  </div>
 
-    <canvas id="game-canvas"></canvas>
-
-    <script src="game.js"></script>
+  <script src="game.js"></script>
 </body>
 </html>
